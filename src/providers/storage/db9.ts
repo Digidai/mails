@@ -37,10 +37,19 @@ const SEARCH_VECTOR = `
   setweight(to_tsvector('simple', coalesce(body_html, '')), 'D')
 `
 
+interface Db9SqlColumn {
+  name: string
+  type?: string
+}
+
 interface Db9SqlResult {
-  columns: string[]
+  columns: Array<string | Db9SqlColumn>
   rows: unknown[][]
   row_count: number
+}
+
+function getColumnNames(columns: Array<string | Db9SqlColumn>): string[] {
+  return columns.map(col => typeof col === 'string' ? col : col.name)
 }
 
 export function createDb9Provider(token: string, databaseId: string): StorageProvider {
@@ -64,9 +73,10 @@ export function createDb9Provider(token: string, databaseId: string): StoragePro
   }
 
   function rowsToEmails(result: Db9SqlResult): Email[] {
+    const columns = getColumnNames(result.columns)
     return result.rows.map(row => {
       const obj: Record<string, unknown> = {}
-      result.columns.forEach((col, i) => { obj[col] = row[i] })
+      columns.forEach((col, i) => { obj[col] = row[i] })
       return {
         id: obj.id as string,
         mailbox: obj.mailbox as string,
@@ -183,10 +193,11 @@ export function createDb9Provider(token: string, databaseId: string): StoragePro
 
         const result = await sql(query)
         if (result.row_count > 0) {
+          const columns = getColumnNames(result.columns)
           const row = result.rows[0]!
-          const codeIdx = result.columns.indexOf('code')
-          const fromIdx = result.columns.indexOf('from_address')
-          const subIdx = result.columns.indexOf('subject')
+          const codeIdx = columns.indexOf('code')
+          const fromIdx = columns.indexOf('from_address')
+          const subIdx = columns.indexOf('subject')
           return {
             code: row[codeIdx] as string,
             from: row[fromIdx] as string,

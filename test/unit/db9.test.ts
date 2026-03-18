@@ -100,7 +100,23 @@ describe('db9 provider', () => {
   test('getEmails returns parsed emails', async () => {
     globalThis.fetch = mock(async () => {
       return new Response(JSON.stringify({
-        columns: ['id', 'mailbox', 'from_address', 'from_name', 'to_address', 'subject', 'body_text', 'body_html', 'code', 'headers', 'metadata', 'direction', 'status', 'received_at', 'created_at'],
+        columns: [
+          { name: 'id', type: 'text' },
+          { name: 'mailbox', type: 'text' },
+          { name: 'from_address', type: 'text' },
+          { name: 'from_name', type: 'text' },
+          { name: 'to_address', type: 'text' },
+          { name: 'subject', type: 'text' },
+          { name: 'body_text', type: 'text' },
+          { name: 'body_html', type: 'text' },
+          { name: 'code', type: 'text' },
+          { name: 'headers', type: 'jsonb' },
+          { name: 'metadata', type: 'jsonb' },
+          { name: 'direction', type: 'text' },
+          { name: 'status', type: 'text' },
+          { name: 'received_at', type: 'timestamptz' },
+          { name: 'created_at', type: 'timestamptz' },
+        ],
         rows: [
           ['e-1', 'agent@test.com', 'sender@x.com', 'Sender', 'agent@test.com', 'Hi', 'Hello', '', null, '{}', '{}', 'inbound', 'received', '2025-01-01T00:00:00Z', '2025-01-01T00:00:00Z'],
         ],
@@ -182,7 +198,23 @@ describe('db9 provider', () => {
   test('searchEmails returns parsed emails', async () => {
     globalThis.fetch = mock(async () => {
       return new Response(JSON.stringify({
-        columns: ['id', 'mailbox', 'from_address', 'from_name', 'to_address', 'subject', 'body_text', 'body_html', 'code', 'headers', 'metadata', 'direction', 'status', 'received_at', 'created_at'],
+        columns: [
+          { name: 'id', type: 'text' },
+          { name: 'mailbox', type: 'text' },
+          { name: 'from_address', type: 'text' },
+          { name: 'from_name', type: 'text' },
+          { name: 'to_address', type: 'text' },
+          { name: 'subject', type: 'text' },
+          { name: 'body_text', type: 'text' },
+          { name: 'body_html', type: 'text' },
+          { name: 'code', type: 'text' },
+          { name: 'headers', type: 'jsonb' },
+          { name: 'metadata', type: 'jsonb' },
+          { name: 'direction', type: 'text' },
+          { name: 'status', type: 'text' },
+          { name: 'received_at', type: 'timestamptz' },
+          { name: 'created_at', type: 'timestamptz' },
+        ],
         rows: [
           ['search-1', 'agent@test.com', 'sender@x.com', 'Sender', 'agent@test.com', 'Reset password', 'Hello', '', '123456', '{}', '{}', 'inbound', 'received', '2025-01-01T00:00:00Z', '2025-01-01T00:00:00Z'],
         ],
@@ -200,7 +232,11 @@ describe('db9 provider', () => {
   test('getCode returns code on first poll', async () => {
     globalThis.fetch = mock(async () => {
       return new Response(JSON.stringify({
-        columns: ['code', 'from_address', 'subject'],
+        columns: [
+          { name: 'code', type: 'text' },
+          { name: 'from_address', type: 'text' },
+          { name: 'subject', type: 'text' },
+        ],
         rows: [['999888', 'noreply@svc.com', 'Your code']],
         row_count: 1,
       }))
