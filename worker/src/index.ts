@@ -157,20 +157,32 @@ async function handleInbox(url: URL, env: Env): Promise<Response> {
   const to = url.searchParams.get('to')
   if (!to) return Response.json({ error: 'Missing ?to= parameter' }, { status: 400 })
 
-  const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '20'), 100)
-  const offset = parseInt(url.searchParams.get('offset') ?? '0')
+  const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '20', 10) || 20, 100)
+  const offset = parseInt(url.searchParams.get('offset') ?? '0', 10) || 0
+  const direction = url.searchParams.get('direction')
+  const query = url.searchParams.get('query')?.trim()
 
-  const rows = await env.DB.prepare(
-    `
-      SELECT
-        id, mailbox, from_address, from_name, subject, code, direction, status,
-        received_at, has_attachments, attachment_count
-      FROM emails
-      WHERE mailbox = ?
-      ORDER BY received_at DESC
-      LIMIT ? OFFSET ?
-    `
-  ).bind(to, limit, offset).all()
+  let sql = `
+    SELECT id, mailbox, from_address, from_name, subject, code, direction, status,
+           received_at, has_attachments, attachment_count
+    FROM emails WHERE mailbox = ?`
+  const params: (string | number)[] = [to]
+
+  if (direction === 'inbound' || direction === 'outbound') {
+    sql += ' AND direction = ?'
+    params.push(direction)
+  }
+
+  if (query) {
+    const pattern = `%${query}%`
+    sql += ' AND (subject LIKE ? OR body_text LIKE ? OR from_address LIKE ? OR from_name LIKE ? OR code LIKE ?)'
+    params.push(pattern, pattern, pattern, pattern, pattern)
+  }
+
+  sql += ' ORDER BY received_at DESC LIMIT ? OFFSET ?'
+  params.push(limit, offset)
+
+  const rows = await env.DB.prepare(sql).bind(...params).all()
 
   return Response.json({
     emails: rows.results.map((row) => ({

@@ -11,7 +11,6 @@ export async function getStorage(): Promise<StorageProvider> {
 
   const config = loadConfig()
 
-  // Explicit storage_provider takes priority
   switch (config.storage_provider) {
     case 'db9': {
       if (!config.db9_token) {
@@ -24,10 +23,7 @@ export async function getStorage(): Promise<StorageProvider> {
       break
     }
     case 'remote': {
-      if (!config.api_key) {
-        throw new Error('api_key not configured. Run: mails claim <name>')
-      }
-      _provider = createRemoteProvider(config.api_key)
+      _provider = resolveRemoteProvider(config)
       break
     }
     case 'sqlite': {
@@ -35,10 +31,12 @@ export async function getStorage(): Promise<StorageProvider> {
       break
     }
     default: {
-      // Auto-detect: if api_key exists but no explicit storage_provider,
-      // use remote (light client). Otherwise fall back to sqlite.
-      if (config.api_key) {
-        _provider = createRemoteProvider(config.api_key)
+      // Auto-detect:
+      // 1. api_key set → hosted mode, use remote with /v1/* auth endpoints
+      // 2. worker_url set → self-hosted, use remote with /api/* public endpoints
+      // 3. Otherwise → local sqlite
+      if (config.api_key || config.worker_url) {
+        _provider = resolveRemoteProvider(config)
       } else {
         _provider = createSqliteProvider()
       }
@@ -48,4 +46,25 @@ export async function getStorage(): Promise<StorageProvider> {
 
   await _provider.init()
   return _provider
+}
+
+function resolveRemoteProvider(config: {
+  api_key?: string
+  worker_url?: string
+  mailbox?: string
+}): StorageProvider {
+  const apiUrl = process.env.MAILS_API_URL
+    || config.worker_url
+    || 'https://mails-dev-worker.o-u-turing.workers.dev'
+
+  const mailbox = config.mailbox || ''
+  if (!mailbox) {
+    throw new Error('mailbox not configured. Run: mails config set mailbox <address>')
+  }
+
+  return createRemoteProvider({
+    url: apiUrl,
+    mailbox,
+    apiKey: config.api_key,
+  })
 }

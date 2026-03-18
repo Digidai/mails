@@ -1,41 +1,60 @@
 import type { Email, EmailQueryOptions, EmailSearchOptions, StorageProvider } from '../../core/types.js'
 
-const DEFAULT_API_URL = 'https://mails-dev-worker.o-u-turing.workers.dev'
+interface RemoteProviderOptions {
+  /** Worker API base URL */
+  url: string
+  /** Mailbox address for query scoping */
+  mailbox: string
+  /** API key (for mails.dev hosted service). If set, uses /v1/* authenticated endpoints. */
+  apiKey?: string
+}
 
-export function createRemoteProvider(apiKey: string, apiUrl?: string): StorageProvider {
-  const baseUrl = apiUrl || process.env.MAILS_API_URL || DEFAULT_API_URL
+export function createRemoteProvider(options: RemoteProviderOptions): StorageProvider {
+  const { url, mailbox, apiKey } = options
+  const useAuthApi = !!apiKey
 
   async function apiFetch(path: string, params?: Record<string, string | number>): Promise<Response> {
-    const url = new URL(path, baseUrl)
+    const endpoint = new URL(path, url)
     if (params) {
       for (const [k, v] of Object.entries(params)) {
-        if (v !== undefined && v !== null) url.searchParams.set(k, String(v))
+        if (v !== undefined && v !== null) endpoint.searchParams.set(k, String(v))
       }
     }
-    return fetch(url.toString(), {
-      headers: { 'Authorization': `Bearer ${apiKey}` },
-    })
+    const headers: Record<string, string> = {}
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`
+    }
+    return fetch(endpoint.toString(), { headers })
+  }
+
+  // Authenticated endpoints (/v1/*) don't need ?to= — api_key is scoped to mailbox.
+  // Public endpoints (/api/*) need ?to= to specify the mailbox.
+  function inboxPath() { return useAuthApi ? '/v1/inbox' : '/api/inbox' }
+  function codePath() { return useAuthApi ? '/v1/code' : '/api/code' }
+  function emailPath() { return useAuthApi ? '/v1/email' : '/api/email' }
+
+  function withMailbox(params: Record<string, string | number>): Record<string, string | number> {
+    if (!useAuthApi) {
+      params.to = mailbox
+    }
+    return params
   }
 
   return {
     name: 'remote',
 
-    async init() {
-      // Nothing to initialize — remote API is always ready
-    },
+    async init() {},
 
-    async saveEmail(_email: Email) {
-      // Remote provider is read-only from the CLI side.
-      // Emails are written by the Worker's email() handler.
+    async saveEmail() {
       throw new Error('Remote provider is read-only. Emails are received by the Worker.')
     },
 
     async getEmails(_mailbox, options) {
-      const res = await apiFetch('/v1/inbox', {
+      const res = await apiFetch(inboxPath(), withMailbox({
         limit: options?.limit ?? 20,
         offset: options?.offset ?? 0,
         ...(options?.direction ? { direction: options.direction } : {}),
-      })
+      }))
       if (!res.ok) {
         const data = await res.json() as { error?: string }
         throw new Error(`API error: ${data.error ?? res.statusText}`)
@@ -45,12 +64,12 @@ export function createRemoteProvider(apiKey: string, apiUrl?: string): StoragePr
     },
 
     async searchEmails(_mailbox, options) {
-      const res = await apiFetch('/v1/inbox', {
+      const res = await apiFetch(inboxPath(), withMailbox({
         query: options.query,
         limit: options.limit ?? 20,
         offset: options.offset ?? 0,
         ...(options.direction ? { direction: options.direction } : {}),
-      })
+      }))
       if (!res.ok) {
         const data = await res.json() as { error?: string }
         throw new Error(`API error: ${data.error ?? res.statusText}`)
@@ -60,7 +79,7 @@ export function createRemoteProvider(apiKey: string, apiUrl?: string): StoragePr
     },
 
     async getEmail(id) {
-      const res = await apiFetch('/v1/email', { id })
+      const res = await apiFetch(emailPath(), { id })
       if (!res.ok) {
         if (res.status === 404) return null
         const data = await res.json() as { error?: string }
@@ -70,10 +89,10 @@ export function createRemoteProvider(apiKey: string, apiUrl?: string): StoragePr
     },
 
     async getCode(_mailbox, options) {
-      const res = await apiFetch('/v1/code', {
+      const res = await apiFetch(codePath(), withMailbox({
         timeout: options?.timeout ?? 30,
         ...(options?.since ? { since: options.since } : {}),
-      })
+      }))
       if (!res.ok) {
         const data = await res.json() as { error?: string }
         throw new Error(`API error: ${data.error ?? res.statusText}`)
