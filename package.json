@@ -53,6 +53,7 @@
   "dependencies": {},
   "devDependencies": {
     "@types/bun": "^1.2.0",
+    "postal-mime": "^2.7.4",
     "typescript": "^5.7.0"
   }
 }
