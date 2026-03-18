@@ -1,5 +1,6 @@
 import { describe, expect, test, mock, afterEach } from 'bun:test'
 import { setConfigValue, loadConfig, saveConfig } from '../../src/core/config'
+import type { Email } from '../../src/core/types'
 
 describe('CLI: send command', () => {
   const originalFetch = globalThis.fetch
@@ -62,6 +63,111 @@ describe('CLI: help command', () => {
     expect(output).toContain('inbox')
     expect(output).toContain('code')
     expect(output).toContain('config')
+    expect(output).toContain('--query')
     expect(output).toContain('mails.dev')
+  })
+})
+
+describe('CLI: inbox command', () => {
+  const originalLog = console.log
+  const originalError = console.error
+  const originalExit = process.exit
+  let importCounter = 0
+
+  afterEach(() => {
+    console.log = originalLog
+    console.error = originalError
+    process.exit = originalExit
+    mock.restore()
+  })
+
+  function makeEmail(overrides: Partial<Email> = {}): Email {
+    return {
+      id: 'email-1',
+      mailbox: 'agent@test.com',
+      from_address: 'sender@example.com',
+      from_name: 'Sender',
+      to_address: 'agent@test.com',
+      subject: 'Reset password',
+      body_text: 'Hello',
+      body_html: '',
+      code: null,
+      headers: {},
+      metadata: {},
+      direction: 'inbound',
+      status: 'received',
+      received_at: '2025-01-01T00:00:00Z',
+      created_at: '2025-01-01T00:00:00Z',
+      ...overrides,
+    }
+  }
+
+  async function importInboxCommand() {
+    importCounter += 1
+    return await import(`../../src/cli/commands/inbox.ts?test=${importCounter}`)
+  }
+
+  test('search mode uses searchInbox and prints query-specific empty state', async () => {
+    const getInboxSpy = mock(async () => [])
+    const searchInboxSpy = mock(async () => [])
+    const getEmailSpy = mock(async () => null)
+    const output: string[] = []
+
+    mock.module('../../src/core/receive.js', () => ({
+      getInbox: getInboxSpy,
+      searchInbox: searchInboxSpy,
+      getEmail: getEmailSpy,
+    }))
+    mock.module('../../src/core/config.js', () => ({
+      loadConfig: () => ({ mailbox: 'agent@test.com' }),
+    }))
+
+    console.log = (msg?: unknown) => { output.push(String(msg ?? '')) }
+    console.error = () => {}
+    process.exit = ((code?: number) => { throw new Error(`exit:${code ?? 0}`) }) as typeof process.exit
+
+    const { inboxCommand } = await importInboxCommand()
+    await inboxCommand(['--query', 'reset', '--direction', 'inbound'])
+
+    expect(searchInboxSpy.mock.calls).toHaveLength(1)
+    expect(searchInboxSpy.mock.calls[0]).toEqual([
+      'agent@test.com',
+      { query: 'reset', direction: 'inbound', limit: 20 },
+    ])
+    expect(getInboxSpy.mock.calls).toHaveLength(0)
+    expect(output.join('\n')).toContain('No emails found for query: reset')
+  })
+
+  test('list mode uses getInbox and preserves existing list output shape', async () => {
+    const email = makeEmail({ id: 'abcdef123456', subject: 'Invoice update', code: '123456' })
+    const getInboxSpy = mock(async () => [email])
+    const searchInboxSpy = mock(async () => [])
+    const output: string[] = []
+
+    mock.module('../../src/core/receive.js', () => ({
+      getInbox: getInboxSpy,
+      searchInbox: searchInboxSpy,
+      getEmail: mock(async () => null),
+    }))
+    mock.module('../../src/core/config.js', () => ({
+      loadConfig: () => ({ mailbox: 'agent@test.com' }),
+    }))
+
+    console.log = (msg?: unknown) => { output.push(String(msg ?? '')) }
+    console.error = () => {}
+    process.exit = ((code?: number) => { throw new Error(`exit:${code ?? 0}`) }) as typeof process.exit
+
+    const { inboxCommand } = await importInboxCommand()
+    await inboxCommand(['--direction', 'inbound'])
+
+    expect(getInboxSpy.mock.calls).toHaveLength(1)
+    expect(getInboxSpy.mock.calls[0]).toEqual([
+      'agent@test.com',
+      { limit: 20, direction: 'inbound' },
+    ])
+    expect(searchInboxSpy.mock.calls).toHaveLength(0)
+    expect(output.join('\n')).toContain('abcdef12')
+    expect(output.join('\n')).toContain('Invoice update')
+    expect(output.join('\n')).toContain('[123456]')
   })
 })

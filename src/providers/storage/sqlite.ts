@@ -2,7 +2,7 @@ import { Database } from 'bun:sqlite'
 import { existsSync, mkdirSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
-import type { Email, StorageProvider } from '../../core/types.js'
+import type { Email, EmailQueryOptions, EmailSearchOptions, StorageProvider } from '../../core/types.js'
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS emails (
@@ -55,8 +55,7 @@ export function createSqliteProvider(dbPath?: string): StorageProvider {
     },
 
     async getEmails(mailbox, options) {
-      const limit = options?.limit ?? 20
-      const offset = options?.offset ?? 0
+      const { limit, offset } = normalizeQueryOptions(options)
       let query = 'SELECT * FROM emails WHERE mailbox = ?'
       const params: (string | number)[] = [mailbox]
 
@@ -67,6 +66,40 @@ export function createSqliteProvider(dbPath?: string): StorageProvider {
 
       query += ' ORDER BY received_at DESC LIMIT ? OFFSET ?'
       params.push(limit, offset)
+
+      const rows = db.prepare(query).all(...params) as Record<string, string>[]
+      return rows.map(rowToEmail)
+    },
+
+    async searchEmails(mailbox, options) {
+      const { limit, offset } = normalizeQueryOptions(options)
+      const pattern = `%${options.query}%`
+      let query = `
+        SELECT * FROM emails
+        WHERE mailbox = ?
+      `
+      const params: (string | number)[] = [mailbox]
+
+      if (options.direction) {
+        query += ' AND direction = ?'
+        params.push(options.direction)
+      }
+
+      query += `
+        AND (
+          subject LIKE ? COLLATE NOCASE
+          OR body_text LIKE ? COLLATE NOCASE
+          OR body_html LIKE ? COLLATE NOCASE
+          OR from_address LIKE ? COLLATE NOCASE
+          OR from_name LIKE ? COLLATE NOCASE
+          OR to_address LIKE ? COLLATE NOCASE
+          OR code LIKE ? COLLATE NOCASE
+        )
+        ORDER BY received_at DESC
+        LIMIT ? OFFSET ?
+      `
+
+      params.push(pattern, pattern, pattern, pattern, pattern, pattern, pattern, limit, offset)
 
       const rows = db.prepare(query).all(...params) as Record<string, string>[]
       return rows.map(rowToEmail)
@@ -129,4 +162,14 @@ function rowToEmail(row: Record<string, string>): Email {
 function safeJsonParse<T>(str: string | undefined, fallback: T): T {
   if (!str) return fallback
   try { return JSON.parse(str) } catch { return fallback }
+}
+
+function normalizeQueryOptions(options?: EmailQueryOptions | EmailSearchOptions): { limit: number; offset: number } {
+  const limit = Number.isFinite(options?.limit) ? Math.trunc(options!.limit!) : 20
+  const offset = Number.isFinite(options?.offset) ? Math.trunc(options!.offset!) : 0
+
+  return {
+    limit: limit > 0 ? limit : 20,
+    offset: offset >= 0 ? offset : 0,
+  }
 }

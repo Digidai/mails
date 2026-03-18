@@ -132,6 +132,68 @@ describe('SQLite provider', () => {
     expect(emails[0]!.mailbox).toBe('a@test.com')
   })
 
+  test('searchEmails matches subject body from and code case-insensitively', async () => {
+    const provider = createSqliteProvider(TEST_DB)
+    await provider.init()
+
+    await provider.saveEmail(makeEmail({
+      id: 'a',
+      subject: 'Reset Password',
+      from_name: 'Security Team',
+      from_address: 'noreply@service.com',
+      body_text: 'Use code 654321 to continue.',
+      code: '654321',
+    }))
+    await provider.saveEmail(makeEmail({
+      id: 'b',
+      subject: 'Weekly digest',
+      from_address: 'digest@example.com',
+      body_text: 'Summary for the week',
+    }))
+
+    expect((await provider.searchEmails('agent@test.com', { query: 'security' }))[0]!.id).toBe('a')
+    expect((await provider.searchEmails('agent@test.com', { query: '654321' }))[0]!.id).toBe('a')
+    expect((await provider.searchEmails('agent@test.com', { query: 'DIGEST@EXAMPLE.COM' }))[0]!.id).toBe('b')
+  })
+
+  test('searchEmails respects mailbox direction sort and limit', async () => {
+    const provider = createSqliteProvider(TEST_DB)
+    await provider.init()
+
+    await provider.saveEmail(makeEmail({
+      id: 'same-inbound',
+      mailbox: 'agent@test.com',
+      direction: 'inbound',
+      subject: 'Invoice available',
+      received_at: '2025-01-01T00:00:00Z',
+    }))
+    await provider.saveEmail(makeEmail({
+      id: 'same-outbound',
+      mailbox: 'agent@test.com',
+      direction: 'outbound',
+      status: 'sent',
+      subject: 'Invoice follow-up',
+      received_at: '2025-01-03T00:00:00Z',
+    }))
+    await provider.saveEmail(makeEmail({
+      id: 'other-mailbox',
+      mailbox: 'other@test.com',
+      subject: 'Invoice from another mailbox',
+      received_at: '2025-01-04T00:00:00Z',
+    }))
+
+    const scoped = await provider.searchEmails('agent@test.com', {
+      query: 'invoice',
+      direction: 'inbound',
+      limit: 5,
+    })
+    expect(scoped.map(email => email.id)).toEqual(['same-inbound'])
+
+    const ordered = await provider.searchEmails('agent@test.com', { query: 'invoice', limit: 1 })
+    expect(ordered).toHaveLength(1)
+    expect(ordered[0]!.id).toBe('same-outbound')
+  })
+
   test('getCode returns code when available', async () => {
     const provider = createSqliteProvider(TEST_DB)
     await provider.init()

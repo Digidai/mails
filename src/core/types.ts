@@ -57,15 +57,22 @@ export interface SendProvider {
   }): Promise<SendResult>
 }
 
+export interface EmailQueryOptions {
+  limit?: number
+  offset?: number
+  direction?: 'inbound' | 'outbound'
+}
+
+export interface EmailSearchOptions extends EmailQueryOptions {
+  query: string
+}
+
 export interface StorageProvider {
   name: string
   init(): Promise<void>
   saveEmail(email: Email): Promise<void>
-  getEmails(mailbox: string, options?: {
-    limit?: number
-    offset?: number
-    direction?: 'inbound' | 'outbound'
-  }): Promise<Email[]>
+  getEmails(mailbox: string, options?: EmailQueryOptions): Promise<Email[]>
+  searchEmails(mailbox: string, options: EmailSearchOptions): Promise<Email[]>
   getEmail(id: string): Promise<Email | null>
   getCode(mailbox: string, options?: {
     timeout?: number

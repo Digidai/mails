@@ -1,13 +1,17 @@
-import type { Email } from './types.js'
+import type { Email, EmailQueryOptions, EmailSearchOptions } from './types.js'
 import { getStorage } from './storage.js'
 
-export async function getInbox(mailbox: string, options?: {
-  limit?: number
-  offset?: number
-  direction?: 'inbound' | 'outbound'
-}): Promise<Email[]> {
+export async function getInbox(mailbox: string, options?: EmailQueryOptions): Promise<Email[]> {
   const storage = await getStorage()
   return storage.getEmails(mailbox, options)
+}
+
+export async function searchInbox(
+  mailbox: string,
+  options: EmailSearchOptions,
+): Promise<Email[]> {
+  const storage = await getStorage()
+  return storage.searchEmails(mailbox, options)
 }
 
 export async function getEmail(id: string): Promise<Email | null> {

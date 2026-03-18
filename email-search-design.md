@@ -1,72 +1,72 @@
-# Email Search Design
+# 邮件搜索设计
 
-Status: approved for implementation after review
+状态：评审后已批准实现
 
-## Scope
+## 范围
 
-This document defines the first built-in email search feature for the `mails` repository.
+本文档定义了 `mails` 仓库中的第一个内建邮件搜索功能。
 
-The goal is to add mailbox-scoped search to the CLI and SDK without changing the current send/receive model.
+目标是在不改变当前发送/接收模型的前提下，为 CLI 和 SDK 增加按邮箱范围限定的搜索能力。
 
-This document covers:
+本文档覆盖：
 
-- public API shape
-- CLI command shape
-- DB9-backed implementation strategy
-- SQLite fallback strategy
-- test plan and pseudocode
+- 对外 API 设计
+- CLI 命令形态
+- 基于 DB9 的实现策略
+- SQLite 回退策略
+- 测试计划与伪代码
 
-This document does not cover:
+本文档不覆盖：
 
-- semantic search
+- 语义搜索
 - embeddings
-- vector indexes
-- re-ranking or LLM-based retrieval
+- 向量索引
+- 重排序或基于 LLM 的检索
 
-## Why Not Vector Search
+## 为什么不是向量搜索
 
-DB9 supports vector search, but that is not the right primitive for this feature.
+DB9 支持向量搜索，但这不是这个功能当前应该使用的基础能力。
 
-Mailbox search needs:
+邮箱搜索需要：
 
-- exact mailbox scoping
-- predictable keyword matching
-- support for addresses, codes, and quoted phrases
-- transparent ranking rules
+- 精确的邮箱范围限定
+- 可预测的关键词匹配
+- 支持地址、验证码和带引号短语
+- 透明的排序规则
 
-Vector search would only make sense later if we explicitly store embeddings for email content first.
+只有在我们先明确为邮件内容存储 embedding 之后，向量搜索才有意义。
 
-For v1, search is:
+对于 v1，搜索应当是：
 
-- structured SQL filtering for exact fields
-- PostgreSQL full-text search for free-text content on DB9
-- case-insensitive fallback matching on SQLite
+- 针对精确字段的结构化 SQL 过滤
+- DB9 上针对自由文本内容的 PostgreSQL 全文搜索
+- SQLite 上大小写不敏感的回退匹配
 
-## DB9 Capabilities Used
+## 使用的 DB9 能力
 
-This design is based on DB9 public docs and `skill.md`.
+这个设计基于 DB9 的公开文档以及 `skill.md`。
 
-Relevant capabilities explicitly documented by DB9:
+DB9 已明确文档化、并在这里会被使用的能力包括：
 
-- full PostgreSQL
-- full-text search
+- 完整 PostgreSQL
+- 全文搜索
 - `tsvector` / `tsquery`
 - `websearch_to_tsquery`
-- ranking with `ts_rank`
-- highlighting
-- GIN indexing
+- 使用 `ts_rank` 排序
+- 高亮
+- GIN 索引
 - JSONB
 
-References:
+参考资料：
 
 - `https://db9.ai/`
 - `https://db9.ai/skill.md`
 
-## User-Facing Behavior
+## 面向用户的行为
 
-The feature will be exposed through the existing inbox command instead of a new top-level command.
+这个功能会挂在现有的 inbox 命令下，而不是新增一个顶层命令。
 
-Examples:
+示例：
 
 ```bash
 mails inbox --query "reset password"
@@ -76,17 +76,17 @@ mails inbox --mailbox agent@example.com --query "invoice" --limit 10
 mails inbox --query "\"build failed\" OR deploy" --direction inbound
 ```
 
-Behavior rules:
+行为规则：
 
-- search is always scoped to one mailbox
-- `--query` switches `mails inbox` from list mode to search mode
-- `--direction` still works in search mode
-- `--limit` still works in search mode
-- if `--query` is absent, current inbox behavior stays unchanged
+- 搜索始终限定在单个邮箱内
+- `--query` 会把 `mails inbox` 从列表模式切换到搜索模式
+- 搜索模式下 `--direction` 仍然生效
+- 搜索模式下 `--limit` 仍然生效
+- 如果没有传 `--query`，当前 inbox 行为保持不变
 
-## API Design
+## API 设计
 
-### Core Types
+### 核心类型
 
 ```ts
 export interface EmailQueryOptions {
@@ -100,7 +100,7 @@ export interface EmailSearchOptions extends EmailQueryOptions {
 }
 ```
 
-### Storage Provider Contract
+### 存储提供者契约
 
 ```ts
 export interface StorageProvider {
@@ -114,7 +114,7 @@ export interface StorageProvider {
 }
 ```
 
-### Core Receive API
+### 核心接收 API
 
 ```ts
 export async function searchInbox(
@@ -123,44 +123,44 @@ export async function searchInbox(
 ): Promise<Email[]>
 ```
 
-### SDK Export
+### SDK 导出
 
 ```ts
 export { searchInbox } from './core/receive.js'
 ```
 
-## CLI Design
+## CLI 设计
 
-The CLI stays under `mails inbox`.
+CLI 仍然保持在 `mails inbox` 下。
 
-### Syntax
+### 语法
 
 ```bash
 mails inbox --query <text> [--mailbox <address>] [--direction inbound|outbound] [--limit <n>]
 ```
 
-### Parsing Rules
+### 解析规则
 
-- `mails inbox <id>` keeps meaning “show one email”
-- `mails inbox --query ...` means search list mode
-- `mails inbox` without `--query` means current list mode
-- `--direction` is optional in both list mode and search mode
+- `mails inbox <id>` 继续表示“查看单封邮件”
+- `mails inbox --query ...` 表示搜索列表模式
+- 不带 `--query` 的 `mails inbox` 表示当前的列表模式
+- `--direction` 在列表模式和搜索模式下都可选
 
-### Output
+### 输出
 
-Search results use the current inbox list format.
+搜索结果沿用当前 inbox 列表格式。
 
-No-result behavior:
+无结果时的行为：
 
 ```text
 No emails found for query: <query>
 ```
 
-## Search Semantics
+## 搜索语义
 
-The query string is a single user-entered search expression.
+查询字符串是用户输入的一整段搜索表达式。
 
-Fields searched in v1:
+v1 中参与搜索的字段：
 
 - `subject`
 - `body_text`
@@ -170,41 +170,41 @@ Fields searched in v1:
 - `to_address`
 - `code`
 
-Structured filters in v1:
+v1 中的结构化过滤条件：
 
 - `mailbox`
 - `direction`
 - `limit`
 - `offset`
 
-Sorting:
+排序规则：
 
-- DB9 search mode: relevance first, then `received_at DESC`
-- SQLite fallback: `received_at DESC`
+- DB9 搜索模式：先按相关性，再按 `received_at DESC`
+- SQLite 回退模式：按 `received_at DESC`
 
-## DB9 Implementation
+## DB9 实现
 
-### High-Level Strategy
+### 高层策略
 
-DB9 search should use a hybrid query:
+DB9 搜索应当使用混合查询：
 
-1. hard filters for mailbox and direction
-2. full-text search for human text
-3. substring fallback for addresses and code-like tokens
-4. relevance ranking for full-text matches
+1. 对邮箱和方向做硬过滤
+2. 对自然语言文本做全文搜索
+3. 对地址和类似验证码的 token 做子串回退匹配
+4. 对全文命中的结果做相关性排序
 
-This avoids using vector search while still taking advantage of DB9 full-text support.
+这样既避免引入向量搜索，也能利用 DB9 的全文搜索支持。
 
-### Index Plan
+### 索引方案
 
-Keep existing indexes:
+保留现有索引：
 
 ```sql
 CREATE INDEX IF NOT EXISTS idx_emails_mailbox ON emails(mailbox, received_at DESC);
 CREATE INDEX IF NOT EXISTS idx_emails_code ON emails(mailbox) WHERE code IS NOT NULL;
 ```
 
-Add a GIN full-text index:
+新增一个 GIN 全文索引：
 
 ```sql
 CREATE INDEX IF NOT EXISTS idx_emails_search_fts
@@ -217,25 +217,25 @@ USING GIN (
 );
 ```
 
-Reasoning:
+原因：
 
-- `subject` should rank highest
-- `from_name` is useful but lower priority than subject
-- `body_text` and `body_html` are useful but should not outrank subject matches
-- email addresses and codes are better handled with explicit substring predicates
+- `subject` 的权重应该最高
+- `from_name` 有价值，但优先级应低于 subject
+- `body_text` 和 `body_html` 有用，但不应压过 subject 命中
+- 邮件地址和验证码更适合用显式的子串谓词处理
 
-### Query Shape
+### 查询形态
 
-The search query should be built with `websearch_to_tsquery('simple', ...)`.
+搜索查询应当使用 `websearch_to_tsquery('simple', ...)` 构建。
 
-This gives:
+这样可以获得：
 
-- quoted phrase support
+- 带引号短语支持
 - `or`
-- `-term` exclusion
-- more natural CLI search syntax
+- `-term` 排除
+- 更自然的 CLI 搜索语法
 
-Planned SQL shape:
+计划中的 SQL 形态：
 
 ```sql
 WITH ranked AS (
@@ -269,26 +269,26 @@ ORDER BY rank DESC, received_at DESC
 LIMIT $limit OFFSET $offset;
 ```
 
-### Why Hybrid Instead Of Pure FTS
+### 为什么是混合方案，而不是纯 FTS
 
-Pure FTS is not ideal for:
+纯 FTS 并不适合处理：
 
-- email addresses
-- short numeric codes
-- punctuation-heavy tokens
+- 邮件地址
+- 较短的数字验证码
+- 含大量标点的 token
 
-So v1 intentionally combines:
+所以 v1 会有意组合：
 
-- FTS for natural text
-- `ILIKE` fallback for address/code lookup
+- 用 FTS 处理自然语言文本
+- 用 `ILIKE` 回退处理地址/验证码查找
 
-## SQLite Implementation
+## SQLite 实现
 
-SQLite is the local-development and test fallback.
+SQLite 是本地开发和测试时的回退实现。
 
-SQLite v1 should not introduce FTS5 yet.
+SQLite v1 暂时不引入 FTS5。
 
-Instead it should use a deterministic case-insensitive `LIKE` search across the same fields:
+相反，它应当在同一批字段上使用确定性的、大小写不敏感的 `LIKE` 搜索：
 
 ```sql
 WHERE mailbox = ?
@@ -306,34 +306,34 @@ ORDER BY received_at DESC
 LIMIT ? OFFSET ?
 ```
 
-Reasoning:
+原因：
 
-- simpler migration story
-- easy local testing
-- behavior stays understandable
-- avoids maintaining two different local schemas for now
+- 迁移路径更简单
+- 便于本地测试
+- 行为更容易理解
+- 暂时避免维护两套不同的本地 schema
 
-## Migration Impact
+## 迁移影响
 
-DB9 schema needs one new index for search.
+DB9 schema 需要新增一个搜索索引。
 
-SQLite schema does not need a migration in v1.
+SQLite schema 在 v1 不需要迁移。
 
-No existing user-facing command is removed or renamed.
+现有的用户命令不会被移除或重命名。
 
-## Testing Plan
+## 测试计划
 
-### 1. SQLite Provider Unit Tests
+### 1. SQLite Provider 单元测试
 
-Goals:
+目标：
 
-- verify case-insensitive search
-- verify subject/body/from/code matching
-- verify mailbox scoping
-- verify direction filtering
-- verify sort order and limit behavior
+- 验证大小写不敏感搜索
+- 验证 subject/body/from/code 匹配
+- 验证邮箱范围限定
+- 验证 direction 过滤
+- 验证排序和 limit 行为
 
-Pseudocode:
+伪代码：
 
 ```ts
 test('searchEmails matches subject/body/from/code in sqlite', async () => {
@@ -349,16 +349,16 @@ test('searchEmails matches subject/body/from/code in sqlite', async () => {
 })
 ```
 
-### 2. DB9 Provider Unit Tests
+### 2. DB9 Provider 单元测试
 
-Goals:
+目标：
 
-- verify generated SQL uses DB9 full-text search primitives
-- verify generated SQL still includes substring fallback
-- verify single quotes are escaped
-- verify direction filter is included
+- 验证生成的 SQL 使用了 DB9 全文搜索原语
+- 验证生成的 SQL 仍然包含子串回退逻辑
+- 验证单引号已被转义
+- 验证包含 direction 过滤
 
-Pseudocode:
+伪代码：
 
 ```ts
 test('searchEmails builds DB9 FTS query', async () => {
@@ -378,13 +378,13 @@ test('searchEmails builds DB9 FTS query', async () => {
 })
 ```
 
-### 3. Core Receive Tests
+### 3. Core Receive 测试
 
-Goals:
+目标：
 
-- verify `searchInbox()` delegates to `getStorage().searchEmails()`
+- 验证 `searchInbox()` 会委托给 `getStorage().searchEmails()`
 
-Pseudocode:
+伪代码：
 
 ```ts
 test('searchInbox delegates to storage.searchEmails', async () => {
@@ -397,16 +397,16 @@ test('searchInbox delegates to storage.searchEmails', async () => {
 })
 ```
 
-### 4. CLI Inbox Command Tests
+### 4. CLI Inbox Command 测试
 
-Goals:
+目标：
 
-- verify `--query` routes to search mode
-- verify no-query path still routes to list mode
-- verify no-result message changes in search mode
-- verify `--direction` is passed through
+- 验证存在 `--query` 时会走搜索模式
+- 验证无 `--query` 时仍走列表模式
+- 验证搜索模式下的无结果提示会变化
+- 验证 `--direction` 会被透传
 
-Pseudocode:
+伪代码：
 
 ```ts
 test('inboxCommand uses searchInbox when --query is present', async () => {
@@ -426,13 +426,13 @@ test('inboxCommand uses searchInbox when --query is present', async () => {
 })
 ```
 
-### 5. SDK Export Tests
+### 5. SDK 导出测试
 
-Goals:
+目标：
 
-- verify top-level `src/index.ts` exports `searchInbox`
+- 验证顶层 `src/index.ts` 导出了 `searchInbox`
 
-Pseudocode:
+伪代码：
 
 ```ts
 test('index exports searchInbox', async () => {
@@ -441,11 +441,11 @@ test('index exports searchInbox', async () => {
 })
 ```
 
-### 6. Coverage Work Needed Alongside Search
+### 6. 与搜索功能一起补的覆盖率工作
 
-The current repository reports `100%` only for the subset of files loaded by the existing coverage command.
+当前仓库报告的 `100%`，只覆盖了现有 coverage 命令实际加载到的那部分文件。
 
-Search work should be paired with tests that pull these files into real coverage:
+搜索功能应当配套补上测试，把这些文件真正拉进 coverage：
 
 - `src/cli/index.ts`
 - `src/cli/commands/send.ts`
@@ -457,37 +457,37 @@ Search work should be paired with tests that pull these files into real coverage
 - `src/core/storage.ts`
 - `src/index.ts`
 
-Existing note:
+现有说明：
 
-- `test/e2e/claim-flow.test.ts` already exists and should be considered in future coverage strategy
-- it is not currently included by `package.json` `test` or `test:coverage`
+- `test/e2e/claim-flow.test.ts` 已存在，后续覆盖率策略应考虑进去
+- 它目前没有被 `package.json` 的 `test` 或 `test:coverage` 包含
 
-## Implementation Order
+## 实现顺序
 
-1. finalize provider contract in `src/core/types.ts`
-2. add `searchInbox()` to `src/core/receive.ts`
-3. export `searchInbox()` from `src/index.ts`
-4. implement SQLite fallback search
-5. implement DB9 hybrid full-text search
-6. update `mails inbox` CLI parsing and help text
-7. add unit tests for provider/core/CLI/export paths
-8. decide whether to extend coverage script after command-level tests exist
+1. 在 `src/core/types.ts` 中定稿 provider contract
+2. 在 `src/core/receive.ts` 中增加 `searchInbox()`
+3. 从 `src/index.ts` 导出 `searchInbox()`
+4. 实现 SQLite 回退搜索
+5. 实现 DB9 混合全文搜索
+6. 更新 `mails inbox` 的 CLI 解析和帮助文本
+7. 补上 provider/core/CLI/export 路径的单元测试
+8. 在命令级测试就位后，再决定是否扩展 coverage 脚本
 
-## Explicit Non-Goals For V1
+## v1 明确不做的事情
 
 - embeddings
-- pgvector usage
-- semantic similarity search
-- fuzzy ranking with LLMs
-- cross-mailbox global search
-- server-side saved search presets
+- pgvector 使用
+- 语义相似度搜索
+- 基于 LLM 的模糊排序
+- 跨邮箱的全局搜索
+- 服务端保存的搜索预设
 
-## Future Extension Path
+## 未来扩展路径
 
-If semantic mail retrieval is ever needed later, it should be a separate feature with its own design:
+如果未来真的需要语义化的邮件检索，应当单独做成一个功能，并有自己独立的设计：
 
-1. define embedding model and dimensionality
-2. store embeddings per email or per chunk
-3. backfill historical emails
-4. add vector indexes
-5. add a separate semantic-search API instead of overloading keyword search
+1. 定义 embedding 模型和维度
+2. 为每封邮件或每个 chunk 存储 embedding
+3. 回填历史邮件
+4. 增加向量索引
+5. 增加独立的语义搜索 API，而不是把它和关键词搜索混在一起

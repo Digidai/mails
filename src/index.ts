@@ -1,5 +1,5 @@
 export { send } from './core/send.js'
-export { getInbox, getEmail, waitForCode } from './core/receive.js'
+export { getInbox, searchInbox, getEmail, waitForCode } from './core/receive.js'
 export { getStorage } from './core/storage.js'
 export { loadConfig, saveConfig, getConfigValue, setConfigValue } from './core/config.js'
 export { createResendProvider } from './providers/send/resend.js'
@@ -12,5 +12,7 @@ export type {
   SendResult,
   SendProvider,
   StorageProvider,
+  EmailQueryOptions,
+  EmailSearchOptions,
   MailsConfig,
 } from './core/types.js'
