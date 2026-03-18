@@ -57,6 +57,13 @@ mails inbox --mailbox agent@test.com  # Specific mailbox
 mails inbox <id>                      # View email details
 ```
 
+### Attachment
+
+```bash
+mails attachment <id>                 # Download an attachment by ID
+mails attachment <id> --output ./file # Download to a specific path
+```
+
 ### Local Inbound Server
 
 ```bash

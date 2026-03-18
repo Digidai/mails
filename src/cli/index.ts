@@ -6,6 +6,7 @@ import { configCommand } from './commands/config.js'
 import { claimCommand } from './commands/claim.js'
 import { helpCommand } from './commands/help.js'
 import { serveCommand } from './commands/serve.js'
+import { attachmentCommand } from './commands/attachment.js'
 
 const args = process.argv.slice(2)
 const command = args[0]
@@ -29,6 +30,9 @@ async function main() {
       break
     case 'serve':
       await serveCommand(args.slice(1))
+      break
+    case 'attachment':
+      await attachmentCommand(args.slice(1))
       break
     case 'help':
     case '--help':

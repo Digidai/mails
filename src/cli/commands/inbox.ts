@@ -39,7 +39,8 @@ export async function inboxCommand(args: string[]) {
       console.log('Attachments:')
       for (const attachment of email.attachments) {
         const size = attachment.size_bytes ?? 0
-        console.log(`- ${attachment.filename} (${attachment.content_type}, ${size} bytes)`)
+        const availability = attachment.downloadable ? 'downloadable' : 'metadata-only'
+        console.log(`- ${attachment.id}  ${attachment.filename} (${attachment.content_type}, ${size} bytes, ${availability})`)
       }
     }
     console.log('---')

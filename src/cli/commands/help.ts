@@ -9,6 +9,7 @@ Commands:
   claim         Claim a @mails.dev mailbox for your agent
   send          Send an email
   inbox         List received emails
+  attachment    Download an attachment by ID
   code          Wait for a verification code
   serve         Run a local inbound HTTP server for forwarded emails
   config        View or modify configuration
@@ -31,6 +32,10 @@ Inbox:
   mails inbox                           List recent emails
   mails inbox --mailbox <address>       List emails for a specific mailbox
   mails inbox <id>                      Show email details
+
+Attachment:
+  mails attachment <id>                 Download an attachment by ID
+  mails attachment <id> --output ./x    Download to a specific path
 
 Serve:
   mails serve                           Run local inbound server on 127.0.0.1:8787

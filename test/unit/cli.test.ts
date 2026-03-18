@@ -6,10 +6,12 @@ import { setConfigValue, loadConfig, saveConfig } from '../../src/core/config'
 describe('CLI: send command', () => {
   const originalFetch = globalThis.fetch
   const attachmentPath = join(import.meta.dir, '..', '.cli-attachment.txt')
+  const downloadPath = join(import.meta.dir, '..', '.cli-download.txt')
 
   afterEach(() => {
     globalThis.fetch = originalFetch
     if (existsSync(attachmentPath)) rmSync(attachmentPath)
+    if (existsSync(downloadPath)) rmSync(downloadPath)
   })
 
   test('send command parses args correctly', async () => {
@@ -85,6 +87,41 @@ describe('CLI: send command', () => {
       },
     ])
   })
+
+  test('attachment command downloads a remote attachment to disk', async () => {
+    saveConfig({
+      mode: 'hosted',
+      domain: 'mails.dev',
+      mailbox: '',
+      send_provider: 'resend',
+      storage_provider: 'sqlite',
+      attachment_blob_store: 'filesystem',
+      worker_url: 'https://worker.test',
+      worker_api_key: 'worker-secret',
+    })
+
+    globalThis.fetch = mock(async (_url: string, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer worker-secret')
+      return new Response('cli attachment', {
+        headers: {
+          'Content-Type': 'text/plain',
+          'Content-Disposition': 'attachment; filename="cli.txt"',
+        },
+      })
+    }) as typeof fetch
+
+    const { attachmentCommand } = await import('../../src/cli/commands/attachment')
+    const originalLog = console.log
+    console.log = () => {}
+
+    try {
+      await attachmentCommand(['att-1', '--output', downloadPath])
+    } finally {
+      console.log = originalLog
+    }
+
+    expect(existsSync(downloadPath)).toBe(true)
+  })
 })
 
 describe('CLI: config command', () => {
@@ -115,6 +152,7 @@ describe('CLI: help command', () => {
     expect(output).toContain('inbox')
     expect(output).toContain('code')
     expect(output).toContain('serve')
+    expect(output).toContain('attachment')
     expect(output).toContain('config')
     expect(output).toContain('mails.dev')
   })
