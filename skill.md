@@ -75,9 +75,15 @@ Replace `YOUR_MAILBOX@mails.dev` with the address from Step 2. If sending from t
 
 Verify: `Sent via resend (id: ...)` confirms the email was sent.
 
-### Step 6: Test verification code extraction
+### Step 6: Test search and verification code
 
-Send an email containing a code to your mailbox (from a different domain), then query it:
+Search your inbox:
+
+```bash
+mails inbox --query "test"
+```
+
+Wait for a verification code:
 
 ```bash
 mails code --to YOUR_MAILBOX@mails.dev --timeout 30
@@ -90,7 +96,7 @@ This long-polls for up to 30 seconds. When an email with a verification code arr
 You now have:
 - `~/.mails/config.json` with your mailbox, API key, and send config
 - A working `@mails.dev` address that receives emails
-- The ability to send emails via Resend
+- The ability to send and search emails
 
 ---
 
@@ -98,8 +104,8 @@ You now have:
 
 ```
 mails claim <name>        Claim name@mails.dev (max 10 per user)
-mails send                Send an email
-mails inbox               List received emails
+mails send                Send an email (with optional attachments)
+mails inbox               List or search received emails
 mails code                Wait for a verification code
 mails config              View or modify configuration
 mails help                Show help
@@ -120,6 +126,8 @@ Opens browser (or shows device code) for human approval. On success, saves `mail
 mails send --to user@example.com --subject "Subject" --body "Plain text body"
 mails send --to user@example.com --subject "Subject" --html "<h1>HTML body</h1>"
 mails send --from "Name <email>" --to user@example.com --subject "Subject" --body "Text"
+mails send --to user@example.com --subject "Report" --body "See attached" --attach report.pdf
+mails send --to user@example.com --subject "Files" --body "Two files" --attach a.txt --attach b.csv
 ```
 
 Uses `default_from` from config if `--from` is not specified. Requires `resend_api_key` in config.
@@ -127,9 +135,11 @@ Uses `default_from` from config if `--from` is not specified. Requires `resend_a
 ### inbox
 
 ```bash
-mails inbox                           # List recent emails (uses mailbox from config)
-mails inbox --mailbox addr@mails.dev  # Specify mailbox
-mails inbox <email-id>                # Show full email details
+mails inbox                                  # List recent emails
+mails inbox --mailbox addr@mails.dev         # Specify mailbox
+mails inbox --query "password reset"         # Search emails
+mails inbox --query "invoice" --direction inbound --limit 10
+mails inbox <email-id>                       # Show full email details (with attachments)
 ```
 
 ### code
@@ -154,16 +164,49 @@ Config file: `~/.mails/config.json`
 
 | Key | Set by | Description |
 |-----|--------|-------------|
-| `mailbox` | `mails claim` | Your @mails.dev receiving address |
-| `api_key` | `mails claim` | API key for inbox/code queries (mk_...) |
+| `mailbox` | `mails claim` | Your receiving address |
+| `api_key` | `mails claim` | API key for hosted mails.dev service (mk_...) |
 | `resend_api_key` | manual | Resend API key for sending emails |
 | `default_from` | manual | Default sender address |
-| `storage_provider` | manual | `sqlite` (default) or `db9` |
+| `storage_provider` | manual | `sqlite`, `db9`, or `remote` (auto-detected) |
+| `worker_url` | manual | Self-hosted Worker URL (enables remote provider) |
+| `worker_token` | manual | Auth token for self-hosted Worker |
+
+## Self-Hosted Setup
+
+Deploy your own Worker instead of using mails.dev:
+
+```bash
+cd worker
+bun install
+wrangler d1 create mails
+# Edit wrangler.toml — set your D1 database ID
+wrangler d1 execute mails --file=schema.sql
+wrangler deploy
+```
+
+Then configure Cloudflare Email Routing to forward to this worker.
+
+Secure the Worker API (optional but recommended):
+
+```bash
+wrangler secret put AUTH_TOKEN    # set a secret token
+```
+
+Configure the CLI to use your Worker:
+
+```bash
+mails config set worker_url https://your-worker.example.com
+mails config set worker_token YOUR_AUTH_TOKEN    # same as above
+mails config set mailbox agent@yourdomain.com
+```
+
+Now `mails inbox`, `mails code`, and `mails inbox --query` query your Worker directly. No local database needed.
 
 ## SDK (Programmatic Usage)
 
 ```typescript
-import { send, getInbox, waitForCode } from 'mails'
+import { send, getInbox, searchInbox, waitForCode } from 'mails'
 
 // Send an email
 const result = await send({
@@ -172,8 +215,23 @@ const result = await send({
   text: 'World',
 })
 
+// Send with attachment
+await send({
+  to: 'user@example.com',
+  subject: 'Report',
+  text: 'See attached',
+  attachments: [{ path: './report.pdf' }],
+})
+
 // List inbox
 const emails = await getInbox('myagent@mails.dev', { limit: 10 })
+
+// Search inbox
+const results = await searchInbox('myagent@mails.dev', {
+  query: 'password reset',
+  direction: 'inbound',
+  limit: 5,
+})
 
 // Wait for verification code
 const code = await waitForCode('myagent@mails.dev', { timeout: 30 })
@@ -184,7 +242,7 @@ if (code) console.log(code.code) // "123456"
 
 For agents that prefer raw HTTP over the CLI/SDK.
 
-### Claim flow (no auth)
+### Claim flow (no auth, hosted only)
 
 ```bash
 # Start session
@@ -199,12 +257,16 @@ curl "https://api.mails.dev/v1/claim/poll?session=xxx"
 # → {"status": "complete", "mailbox": "myagent@mails.dev", "api_key": "mk_xxx"}
 ```
 
-### Authenticated endpoints (requires API key from claim)
+### Hosted endpoints (mails.dev, requires API key from claim)
 
 ```bash
 # List inbox
 curl -H "Authorization: Bearer mk_YOUR_API_KEY" \
   "https://api.mails.dev/v1/inbox"
+
+# Search inbox
+curl -H "Authorization: Bearer mk_YOUR_API_KEY" \
+  "https://api.mails.dev/v1/inbox?query=password+reset&direction=inbound"
 
 # Wait for verification code
 curl -H "Authorization: Bearer mk_YOUR_API_KEY" \
@@ -213,6 +275,22 @@ curl -H "Authorization: Bearer mk_YOUR_API_KEY" \
 # Get email detail
 curl -H "Authorization: Bearer mk_YOUR_API_KEY" \
   "https://api.mails.dev/v1/email?id=EMAIL_ID"
+```
+
+### Self-hosted endpoints (your Worker, optional AUTH_TOKEN)
+
+```bash
+# List inbox
+curl -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  "https://your-worker.example.com/api/inbox?to=agent@yourdomain.com"
+
+# Search inbox
+curl -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  "https://your-worker.example.com/api/inbox?to=agent@yourdomain.com&query=invoice"
+
+# Wait for verification code
+curl -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  "https://your-worker.example.com/api/code?to=agent@yourdomain.com&timeout=30"
 ```
 
 ## Environment Variables

@@ -9,13 +9,15 @@ Email infrastructure for AI agents. Send and receive emails programmatically.
 
 ## Features
 
-- **Send emails** via Resend (more providers coming)
+- **Send emails** via Resend with attachment support
 - **Receive emails** via Cloudflare Email Routing Worker
+- **Search inbox** — keyword search across subject, body, sender, code
 - **Verification code extraction** — auto-extracts codes from emails (EN/ZH/JA/KO)
-- **Storage providers** — local SQLite (default) or [db9.ai](https://db9.ai) cloud PostgreSQL
-- **Zero dependencies** — Resend provider uses raw `fetch()`, no SDK needed
-- **Agent-first** — designed for AI agents with `skill.md` integration guide
-- **Cloud service** — `@mails.dev` addresses with x402 micropayments (coming soon)
+- **Attachments** — send files via CLI (`--attach`) or SDK, receive and parse MIME attachments
+- **Storage providers** — local SQLite, [db9.ai](https://db9.ai) cloud PostgreSQL, or remote Worker API
+- **Zero runtime dependencies** — Resend provider uses raw `fetch()`
+- **Hosted service** — free `@mails.dev` mailboxes via `mails claim`
+- **Self-hosted** — deploy your own Worker with optional AUTH_TOKEN
 
 ## Install
 
@@ -29,34 +31,55 @@ npx mails
 
 ## Quick Start
 
+### Hosted (mails.dev)
+
 ```bash
-# Configure
+mails claim myagent                  # Claim myagent@mails.dev
 mails config set resend_api_key re_YOUR_KEY
 mails config set default_from "Agent <agent@yourdomain.com>"
-
-# Send an email
 mails send --to user@example.com --subject "Hello" --body "World"
+mails inbox                          # List received emails
+mails inbox --query "password"       # Search emails
+```
+
+### Self-Hosted
+
+```bash
+cd worker && wrangler deploy         # Deploy your own Worker
+mails config set worker_url https://your-worker.example.com
+mails config set worker_token YOUR_TOKEN
+mails config set mailbox agent@yourdomain.com
+mails inbox                          # Queries your Worker API
 ```
 
 ## CLI Reference
 
-### Send
+### claim
+
+```bash
+mails claim <name>                   # Claim name@mails.dev (max 10 per user)
+```
+
+### send
 
 ```bash
 mails send --to <email> --subject <subject> --body <text>
 mails send --to <email> --subject <subject> --html "<h1>Hello</h1>"
 mails send --from "Name <email>" --to <email> --subject <subject> --body <text>
+mails send --to <email> --subject "Report" --body "See attached" --attach report.pdf
 ```
 
-### Inbox
+### inbox
 
 ```bash
-mails inbox                           # List recent emails
-mails inbox --mailbox agent@test.com  # Specific mailbox
-mails inbox <id>                      # View email details
+mails inbox                                  # List recent emails
+mails inbox --mailbox agent@test.com         # Specific mailbox
+mails inbox --query "password reset"         # Search emails
+mails inbox --query "invoice" --direction inbound --limit 10
+mails inbox <id>                             # View email details + attachments
 ```
 
-### Verification Code
+### code
 
 ```bash
 mails code --to agent@test.com              # Wait for code (default 30s)
@@ -65,19 +88,18 @@ mails code --to agent@test.com --timeout 60 # Custom timeout
 
 The code is printed to stdout for easy piping: `CODE=$(mails code --to agent@test.com)`
 
-### Config
+### config
 
 ```bash
 mails config                    # Show all config
 mails config set <key> <value>  # Set a value
 mails config get <key>          # Get a value
-mails config path               # Show config file path
 ```
 
 ## SDK Usage
 
 ```typescript
-import { send, getInbox, waitForCode } from 'mails'
+import { send, getInbox, searchInbox, waitForCode } from 'mails'
 
 // Send
 const result = await send({
@@ -86,26 +108,26 @@ const result = await send({
   text: 'World',
 })
 
+// Send with attachment
+await send({
+  to: 'user@example.com',
+  subject: 'Report',
+  text: 'See attached',
+  attachments: [{ path: './report.pdf' }],
+})
+
 // List inbox
-const emails = await getInbox('agent@yourdomain.com', { limit: 10 })
+const emails = await getInbox('agent@mails.dev', { limit: 10 })
+
+// Search inbox
+const results = await searchInbox('agent@mails.dev', {
+  query: 'password reset',
+  direction: 'inbound',
+})
 
 // Wait for verification code
-const code = await waitForCode('agent@yourdomain.com', { timeout: 30 })
+const code = await waitForCode('agent@mails.dev', { timeout: 30 })
 if (code) console.log(code.code) // "123456"
-```
-
-### Direct Provider Usage
-
-```typescript
-import { createResendProvider } from 'mails'
-
-const resend = createResendProvider('re_YOUR_KEY')
-await resend.send({
-  from: 'Agent <agent@yourdomain.com>',
-  to: ['user@example.com'],
-  subject: 'Hello',
-  text: 'Direct provider usage',
-})
 ```
 
 ## Email Worker
@@ -117,24 +139,38 @@ The `worker/` directory contains a Cloudflare Email Routing Worker for receiving
 ```bash
 cd worker
 bun install
-# Edit wrangler.toml — set your D1 database ID
 wrangler d1 create mails
+# Edit wrangler.toml — set your D1 database ID
 wrangler d1 execute mails --file=schema.sql
 wrangler deploy
 ```
 
 Then configure Cloudflare Email Routing to forward to this worker.
 
+### Secure the Worker (optional)
+
+```bash
+wrangler secret put AUTH_TOKEN    # Set a secret token
+```
+
+If `AUTH_TOKEN` is set, all `/api/*` endpoints require `Authorization: Bearer <token>`. `/health` is always public.
+
 ### Worker API
 
 | Endpoint | Description |
 |----------|-------------|
 | `GET /api/inbox?to=<addr>&limit=20` | List emails |
+| `GET /api/inbox?to=<addr>&query=<text>` | Search emails |
 | `GET /api/code?to=<addr>&timeout=30` | Long-poll for verification code |
-| `GET /api/email?id=<id>` | Get email by ID |
-| `GET /health` | Health check |
+| `GET /api/email?id=<id>` | Get email by ID (with attachments) |
+| `GET /health` | Health check (always public) |
 
 ## Storage Providers
+
+The CLI auto-detects the storage provider:
+- `api_key` in config → remote (mails.dev hosted)
+- `worker_url` in config → remote (self-hosted Worker)
+- Otherwise → local SQLite
 
 ### SQLite (default)
 
@@ -142,7 +178,7 @@ Local database at `~/.mails/mails.db`. Zero config.
 
 ### db9.ai
 
-Cloud PostgreSQL for AI agents.
+Cloud PostgreSQL for AI agents. Full-text search with ranking.
 
 ```bash
 mails config set storage_provider db9
@@ -150,47 +186,31 @@ mails config set db9_token YOUR_TOKEN
 mails config set db9_database_id YOUR_DB_ID
 ```
 
+### Remote (Worker API)
+
+Queries the Worker HTTP API directly. Auto-enabled when `api_key` or `worker_url` is configured.
+
 ## Config Keys
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `mode` | `hosted` | `hosted` or `selfhosted` |
-| `domain` | `mails.dev` | Email domain |
 | `mailbox` | | Your receiving address |
-| `send_provider` | `resend` | Send provider |
-| `storage_provider` | `sqlite` | `sqlite` or `db9` |
+| `api_key` | | API key for mails.dev hosted service |
+| `worker_url` | | Self-hosted Worker URL |
+| `worker_token` | | Auth token for self-hosted Worker |
 | `resend_api_key` | | Resend API key |
 | `default_from` | | Default sender address |
-| `db9_token` | | db9.ai API token |
-| `db9_database_id` | | db9.ai database ID |
+| `storage_provider` | auto | `sqlite`, `db9`, or `remote` |
 
 ## Testing
 
 ```bash
-bun test              # Run all tests (78 unit + 1 E2E)
+bun test              # Unit + mock E2E tests
 bun test:coverage     # With coverage report
 bun test:live         # Live E2E with real Resend + Cloudflare (requires .env)
 ```
 
-### Test Coverage
-
-```
----------------------------------|---------|---------|
-File                             | % Funcs | % Lines |
----------------------------------|---------|---------|
-All files                        |  100.00 |  100.00 |
- src/cli/commands/help.ts        |  100.00 |  100.00 |
- src/core/config.ts              |  100.00 |  100.00 |
- src/core/send.ts                |  100.00 |  100.00 |
- src/core/types.ts               |  100.00 |  100.00 |
- src/providers/send/resend.ts    |  100.00 |  100.00 |
- src/providers/storage/db9.ts    |  100.00 |  100.00 |
- src/providers/storage/sqlite.ts |  100.00 |  100.00 |
- worker/src/extract-code.ts      |  100.00 |  100.00 |
----------------------------------|---------|---------|
-
-78 unit tests + 8 live E2E tests (real Resend + Cloudflare Email Routing)
-```
+125 unit tests + 42 E2E tests across 6 test suites.
 
 ## License
 
