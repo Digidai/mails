@@ -95,11 +95,56 @@ describe('send', () => {
     expect(sentTo).toEqual(['a@test.com', 'b@test.com'])
   })
 
-  test('throws for unknown provider', async () => {
-    saveConfig({ ...BASE_CONFIG, send_provider: 'unknown' })
+  test('throws when no provider configured', async () => {
+    saveConfig({ ...BASE_CONFIG, send_provider: 'unknown', resend_api_key: undefined, api_key: undefined })
 
     expect(
       send({ to: 'a@b.com', subject: 'Test', text: 'hi' })
-    ).rejects.toThrow('Unknown send provider: unknown')
+    ).rejects.toThrow('No send provider configured')
+  })
+
+  test('uses hosted provider when api_key set and no resend_api_key', async () => {
+    saveConfig({
+      ...BASE_CONFIG,
+      resend_api_key: undefined,
+      api_key: 'mk_hosted_test',
+      default_from: 'agent@mails.dev',
+    })
+
+    globalThis.fetch = mock(async (_url: string, init: RequestInit) => {
+      const auth = (init.headers as Record<string, string>)['Authorization']
+      expect(auth).toBe('Bearer mk_hosted_test')
+      return new Response(JSON.stringify({ id: 'hosted_1', sends_this_month: 1, monthly_limit: 100 }))
+    }) as typeof fetch
+
+    const result = await send({ to: 'user@example.com', subject: 'Hosted', text: 'test' })
+    expect(result.id).toBe('hosted_1')
+    expect(result.provider).toBe('mails.dev')
+  })
+
+  test('resend_api_key takes priority over api_key', async () => {
+    saveConfig({
+      ...BASE_CONFIG,
+      resend_api_key: 're_priority',
+      api_key: 'mk_should_not_use',
+    })
+
+    let usedUrl = ''
+    globalThis.fetch = mock(async (url: string) => {
+      usedUrl = url
+      return new Response(JSON.stringify({ id: 'resend_1' }))
+    }) as typeof fetch
+
+    const result = await send({ to: 'user@example.com', subject: 'Priority', text: 'test' })
+    expect(usedUrl).toContain('resend.com')
+    expect(result.provider).toBe('resend')
+  })
+
+  test('throws resend_api_key error when explicitly set as provider without key', async () => {
+    saveConfig({ ...BASE_CONFIG, resend_api_key: undefined, api_key: undefined, send_provider: 'resend' })
+
+    expect(
+      send({ to: 'a@b.com', subject: 'Test', text: 'hi' })
+    ).rejects.toThrow('resend_api_key not configured')
   })
 })

@@ -30,17 +30,13 @@ npm install -g mails
 
 ```bash
 mails claim myagent                  # 免费认领 myagent@mails.dev
+mails send --to user@example.com --subject "Hello" --body "World"  # 每月 100 封免费
 mails inbox                          # 查看收件箱
 mails inbox --query "密码"            # 搜索邮件
 mails code --to myagent@mails.dev    # 等待验证码
 ```
 
-发送邮件需要配置 Resend API key（云端托管发件即将上线）：
-
-```bash
-mails config set resend_api_key re_YOUR_KEY
-mails send --to user@example.com --subject "Hello" --body "World"
-```
+无需 Resend key — 托管用户每月 100 封免费发件。无限发送请配置自己的 key：`mails config set resend_api_key re_YOUR_KEY`
 
 ### 自部署模式
 

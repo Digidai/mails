@@ -35,17 +35,13 @@ npx mails
 
 ```bash
 mails claim myagent                  # Claim myagent@mails.dev (free)
+mails send --to user@example.com --subject "Hello" --body "World"  # 100 free/month
 mails inbox                          # List received emails
 mails inbox --query "password"       # Search emails
 mails code --to myagent@mails.dev    # Wait for verification code
 ```
 
-To send emails, configure a Resend API key (cloud-managed sending coming soon):
-
-```bash
-mails config set resend_api_key re_YOUR_KEY
-mails send --to user@example.com --subject "Hello" --body "World"
-```
+No Resend key needed — hosted users get 100 free sends/month. For unlimited sending, set your own key: `mails config set resend_api_key re_YOUR_KEY`
 
 ### Self-Hosted
 

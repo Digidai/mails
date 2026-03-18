@@ -52,29 +52,23 @@ mails inbox
 
 Expected: `No emails found.` (empty inbox is normal for a new mailbox).
 
-### Step 4: Configure sending (optional)
+### Step 4: Send an email
 
-Receiving emails works immediately after claim. To also send emails, you need a Resend API key. Get one at https://resend.com, then:
+After claiming, you can send emails immediately — no extra config needed (100 free/month):
+
+```bash
+mails send --to user@example.com --subject "Hello" --body "World"
+```
+
+Verify: `Sent via mails.dev (id: ...)` confirms the email was sent. The sender address is your claimed mailbox.
+
+To send unlimited emails, configure your own Resend API key:
 
 ```bash
 mails config set resend_api_key re_YOUR_KEY
 ```
 
-The `default_from` is automatically set to your claimed mailbox. Cloud-managed sending (no Resend key needed) is coming soon.
-
-### Step 5: Test sending
-
-Send a test email to yourself:
-
-```bash
-mails send --to YOUR_MAILBOX@mails.dev --subject "Test" --body "Hello from mails"
-```
-
-Replace `YOUR_MAILBOX@mails.dev` with the address from Step 2. If sending from the same domain fails (Resend may suppress same-domain delivery), try sending to a different email address.
-
-Verify: `Sent via resend (id: ...)` confirms the email was sent.
-
-### Step 6: Test search and verification code
+### Step 5: Test search and verification code
 
 Search your inbox:
 

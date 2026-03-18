@@ -1,21 +1,31 @@
 import type { SendOptions, SendProvider, SendResult } from './types.js'
 import { loadConfig } from './config.js'
 import { createResendProvider } from '../providers/send/resend.js'
+import { createHostedSendProvider } from '../providers/send/hosted.js'
 import { prepareSendAttachments } from './send-attachments.js'
 
 function resolveProvider(): SendProvider {
   const config = loadConfig()
 
-  switch (config.send_provider) {
-    case 'resend': {
-      if (!config.resend_api_key) {
-        throw new Error('resend_api_key not configured. Run: mails config set resend_api_key <key>')
-      }
-      return createResendProvider(config.resend_api_key)
-    }
-    default:
-      throw new Error(`Unknown send provider: ${config.send_provider}`)
+  // Priority:
+  // 1. User has their own resend_api_key → direct Resend (unlimited)
+  // 2. User has api_key (hosted mode) → cloud send via /v1/send (100 free/month + x402)
+  // 3. Explicit send_provider=resend without key → error
+  // 4. Nothing configured → error
+
+  if (config.resend_api_key) {
+    return createResendProvider(config.resend_api_key)
   }
+
+  if (config.api_key) {
+    return createHostedSendProvider(config.api_key)
+  }
+
+  if (config.send_provider === 'resend') {
+    throw new Error('resend_api_key not configured. Run: mails config set resend_api_key <key>')
+  }
+
+  throw new Error('No send provider configured. Run: mails claim <name> or mails config set resend_api_key <key>')
 }
 
 export async function send(options: SendOptions): Promise<SendResult> {

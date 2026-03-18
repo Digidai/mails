@@ -30,17 +30,13 @@ npm install -g mails
 
 ```bash
 mails claim myagent                  # myagent@mails.dev を無料で取得
+mails send --to user@example.com --subject "Hello" --body "World"  # 月100通無料
 mails inbox                          # 受信箱を確認
 mails inbox --query "パスワード"       # メール検索
 mails code --to myagent@mails.dev    # 認証コードを待機
 ```
 
-メール送信にはResend APIキーが必要です（クラウド送信機能は近日公開）：
-
-```bash
-mails config set resend_api_key re_YOUR_KEY
-mails send --to user@example.com --subject "Hello" --body "World"
-```
+Resendキー不要 — ホスティングユーザーは月100通無料。無制限送信は自分のキーを設定：`mails config set resend_api_key re_YOUR_KEY`
 
 ### セルフホストモード
 
