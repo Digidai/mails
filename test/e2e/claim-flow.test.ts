@@ -1,11 +1,9 @@
 /**
  * E2E test for the claim CLI polling flow.
  *
- * Tests against local worker (localhost:3160).
- * Simulates: CLI start → poll pending → browser confirm → poll complete → config saved
- *
- * Prerequisites:
- *   cd ~/Codes/mails.dev/worker && npx wrangler dev --port 3160
+ * Requires mails.dev worker running locally.
+ * Use `bun run test/e2e/cloud-e2e.ts` to start the worker automatically.
+ * Or manually: cd ~/Codes/mails.dev/worker && npx wrangler dev --port 3160
  *
  * Run: bun test test/e2e/claim-flow.test.ts
  */
@@ -16,9 +14,9 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { execSync } from 'child_process'
 
-const API = 'http://localhost:3160'
+const API = process.env.MAILS_API_URL || 'http://localhost:3160'
 const CONFIG_FILE = join(homedir(), '.mails', 'config.json')
-const WORKER_DIR = join(homedir(), 'Codes', 'mails.dev', 'worker')
+const WORKER_DIR = process.env.MAILS_DEV_WORKER_DIR || join(homedir(), 'Codes', 'mails.dev', 'worker')
 
 function d1(sql: string) {
   execSync(`cd ${WORKER_DIR} && npx wrangler d1 execute mails-dev --local --command "${sql.replace(/"/g, '\\"')}"`, { stdio: 'pipe' })

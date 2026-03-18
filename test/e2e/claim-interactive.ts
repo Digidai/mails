@@ -15,8 +15,10 @@
 import { spawn } from 'bun'
 import { join } from 'path'
 
+import { homedir } from 'os'
+
 const name = process.argv[2] || `test${Date.now().toString(36)}`
-const MAILS_DEV_DIR = join(import.meta.dir, '..', '..', '..', 'mails.dev')
+const MAILS_DEV_DIR = process.env.MAILS_DEV_DIR || join(homedir(), 'Codes', 'mails.dev')
 const MAILS_DIR = join(import.meta.dir, '..', '..')
 
 const procs: ReturnType<typeof spawn>[] = []
