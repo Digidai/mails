@@ -7,14 +7,17 @@ export async function getInbox(mailbox: string, options?: {
   offset?: number
   direction?: 'inbound' | 'outbound'
 }): Promise<Email[]> {
-  const workerUrl = loadConfig().worker_url
+  const config = loadConfig()
+  const workerUrl = config.worker_url
   if (workerUrl) {
     const params = new URLSearchParams({
       to: mailbox,
       limit: String(options?.limit ?? 20),
       offset: String(options?.offset ?? 0),
     })
-    const response = await fetch(`${workerUrl}/api/inbox?${params.toString()}`)
+    const response = await fetch(`${workerUrl}/api/inbox?${params.toString()}`, {
+      headers: buildWorkerHeaders(config.worker_api_key),
+    })
     if (!response.ok) {
       throw new Error(`Worker inbox request failed: ${response.status} ${response.statusText}`)
     }
@@ -27,9 +30,12 @@ export async function getInbox(mailbox: string, options?: {
 }
 
 export async function getEmail(id: string): Promise<Email | null> {
-  const workerUrl = loadConfig().worker_url
+  const config = loadConfig()
+  const workerUrl = config.worker_url
   if (workerUrl) {
-    const response = await fetch(`${workerUrl}/api/email?id=${encodeURIComponent(id)}`)
+    const response = await fetch(`${workerUrl}/api/email?id=${encodeURIComponent(id)}`, {
+      headers: buildWorkerHeaders(config.worker_api_key),
+    })
     if (response.status === 404) return null
     if (!response.ok) {
       throw new Error(`Worker email request failed: ${response.status} ${response.statusText}`)
@@ -45,7 +51,8 @@ export async function waitForCode(mailbox: string, options?: {
   timeout?: number
   since?: string
 }): Promise<{ code: string; from: string; subject: string } | null> {
-  const workerUrl = loadConfig().worker_url
+  const config = loadConfig()
+  const workerUrl = config.worker_url
   if (workerUrl) {
     const params = new URLSearchParams({
       to: mailbox,
@@ -53,7 +60,9 @@ export async function waitForCode(mailbox: string, options?: {
     })
     if (options?.since) params.set('since', options.since)
 
-    const response = await fetch(`${workerUrl}/api/code?${params.toString()}`)
+    const response = await fetch(`${workerUrl}/api/code?${params.toString()}`, {
+      headers: buildWorkerHeaders(config.worker_api_key),
+    })
     if (!response.ok) {
       throw new Error(`Worker code request failed: ${response.status} ${response.statusText}`)
     }
@@ -69,4 +78,11 @@ export async function waitForCode(mailbox: string, options?: {
 
   const storage = await getStorage()
   return storage.getCode(mailbox, options)
+}
+
+function buildWorkerHeaders(apiKey: string | undefined): HeadersInit | undefined {
+  if (!apiKey) return undefined
+  return {
+    'Authorization': `Bearer ${apiKey}`,
+  }
 }

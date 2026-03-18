@@ -7,6 +7,7 @@ export interface Env {
   FORWARD_URL?: string
   FORWARD_TOKEN?: string
   FORWARD_TIMEOUT_MS?: string
+  READ_TOKEN?: string
 }
 
 export default {
@@ -26,16 +27,16 @@ export default {
 
     switch (url.pathname) {
       case '/api/inbox':
-        response = await handleInbox(url, env)
+        response = requireReadAuth(request, env) ?? await handleInbox(url, env)
         break
       case '/api/code':
-        response = await handleGetCode(url, env)
+        response = requireReadAuth(request, env) ?? await handleGetCode(url, env)
         break
       case '/api/email':
-        response = await handleGetEmail(url, env)
+        response = requireReadAuth(request, env) ?? await handleGetEmail(url, env)
         break
       case '/api/attachment':
-        response = await handleGetAttachment(url, env)
+        response = requireReadAuth(request, env) ?? await handleGetAttachment(url, env)
         break
       case '/health':
         response = Response.json({ ok: true })
@@ -154,6 +155,17 @@ export default {
 } satisfies ExportedHandler<Env>
 
 // --- HTTP Handlers ---
+
+function requireReadAuth(request: Request, env: Env): Response | null {
+  if (!env.READ_TOKEN) return null
+
+  const authorization = request.headers.get('Authorization')
+  if (authorization === `Bearer ${env.READ_TOKEN}`) {
+    return null
+  }
+
+  return Response.json({ error: 'Unauthorized' }, { status: 401 })
+}
 
 async function handleGetCode(url: URL, env: Env): Promise<Response> {
   const to = url.searchParams.get('to')

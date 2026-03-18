@@ -6,10 +6,14 @@ import { getStorage } from './storage.js'
 import type { Attachment } from './types.js'
 
 export async function getAttachment(id: string): Promise<Attachment | null> {
-  const workerUrl = loadConfig().worker_url
+  const config = loadConfig()
+  const workerUrl = config.worker_url
   if (workerUrl) {
     const response = await fetch(
-      `${workerUrl}/api/attachment?id=${encodeURIComponent(id)}&format=json`
+      `${workerUrl}/api/attachment?id=${encodeURIComponent(id)}&format=json`,
+      {
+        headers: buildWorkerHeaders(config.worker_api_key),
+      }
     )
     if (response.status === 404) {
       return null
@@ -28,7 +32,9 @@ export async function downloadAttachment(id: string, outputPath?: string): Promi
   const config = loadConfig()
 
   if (config.worker_url) {
-    const response = await fetch(`${config.worker_url}/api/attachment?id=${encodeURIComponent(id)}`)
+    const response = await fetch(`${config.worker_url}/api/attachment?id=${encodeURIComponent(id)}`, {
+      headers: buildWorkerHeaders(config.worker_api_key),
+    })
     if (response.status === 404) {
       throw new Error(`Attachment not found: ${id}`)
     }
@@ -79,4 +85,11 @@ function readFilename(contentDisposition: string | null): string | null {
 function sanitizeFilename(value: string): string {
   const filename = basename(value).replace(/[^A-Za-z0-9._-]/g, '_')
   return filename.length > 0 ? filename : 'attachment'
+}
+
+function buildWorkerHeaders(apiKey: string | undefined): HeadersInit | undefined {
+  if (!apiKey) return undefined
+  return {
+    'Authorization': `Bearer ${apiKey}`,
+  }
 }

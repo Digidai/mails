@@ -86,12 +86,14 @@ export interface MailsConfig {
   storage_provider: string
   attachment_blob_store?: string
   attachment_blob_path?: string
+  api_key?: string
   resend_api_key?: string
   db9_token?: string
   db9_database_id?: string
   cloudflare_api_token?: string
   cloudflare_zone_id?: string
   worker_url?: string
+  worker_api_key?: string
   default_from?: string
 }
 

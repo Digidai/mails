@@ -143,7 +143,10 @@ Then configure Cloudflare Email Routing to forward to this worker.
 | `GET /api/inbox?to=<addr>&limit=20` | List emails |
 | `GET /api/code?to=<addr>&timeout=30` | Long-poll for verification code |
 | `GET /api/email?id=<id>` | Get email by ID |
+| `GET /api/attachment?id=<id>` | Download attachment by ID |
 | `GET /health` | Health check |
+
+Set `READ_TOKEN` in the Worker environment if you want these read endpoints protected with `Authorization: Bearer <token>`.
 
 ## Storage Providers
 
@@ -173,10 +176,12 @@ mails config set db9_database_id YOUR_DB_ID
 | `storage_provider` | `sqlite` | `sqlite` or `db9` |
 | `attachment_blob_store` | `filesystem` | Attachment blob backend |
 | `attachment_blob_path` | `~/.mails/attachments` | Filesystem blob root |
+| `api_key` | | Hosted mails.dev mailbox API key |
 | `resend_api_key` | | Resend API key |
 | `default_from` | | Default sender address |
 | `db9_token` | | db9.ai API token |
 | `db9_database_id` | | db9.ai database ID |
+| `worker_api_key` | | Bearer token for self-hosted Worker read APIs |
 
 ## Local-First Attachment Flow
 

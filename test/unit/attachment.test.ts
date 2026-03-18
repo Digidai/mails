@@ -23,6 +23,7 @@ describe('attachment', () => {
     saveConfig({
       ...DEFAULT_CONFIG,
       worker_url: 'https://worker.test',
+      worker_api_key: 'worker-secret',
     })
   })
 
@@ -35,8 +36,9 @@ describe('attachment', () => {
 
   test('getAttachment loads metadata from the worker attachment endpoint', async () => {
     let requestedUrl = ''
-    globalThis.fetch = mock(async (input: string | URL | Request) => {
+    globalThis.fetch = mock(async (input: string | URL | Request, init?: RequestInit) => {
       requestedUrl = String(input)
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer worker-secret')
       return Response.json({
         id: 'att-1',
         email_id: 'email-1',
@@ -61,14 +63,15 @@ describe('attachment', () => {
   })
 
   test('downloadAttachment writes worker attachment bytes to disk', async () => {
-    globalThis.fetch = mock(async () =>
-      new Response('hello attachment', {
+    globalThis.fetch = mock(async (_input: string | URL | Request, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer worker-secret')
+      return new Response('hello attachment', {
         headers: {
           'Content-Type': 'text/plain',
           'Content-Disposition': 'attachment; filename="hello.txt"',
         },
       })
-    ) as typeof fetch
+    }) as typeof fetch
 
     const path = await downloadAttachment('att-2', outputPath)
 
@@ -80,14 +83,15 @@ describe('attachment', () => {
     const dir = mkdtempSync(join(tmpdir(), 'mails-attachment-'))
     process.chdir(dir)
 
-    globalThis.fetch = mock(async () =>
-      new Response('safe attachment', {
+    globalThis.fetch = mock(async (_input: string | URL | Request, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer worker-secret')
+      return new Response('safe attachment', {
         headers: {
           'Content-Type': 'text/plain',
           'Content-Disposition': 'attachment; filename="../../escape.txt"',
         },
       })
-    ) as typeof fetch
+    }) as typeof fetch
 
     const path = await downloadAttachment('att-3')
 
