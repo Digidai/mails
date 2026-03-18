@@ -209,6 +209,12 @@ GET  /api/status          — 各项配置状态检查
 - [ ] 2.3 CLI 收件箱
   - `mails inbox` / `mails code`
 
+- [ ] 2.4 本地优先入站模式
+  - Worker 可选把入站邮件直接转发到本地常驻进程
+  - 本地 `sqlite` / `db9` 都能持久化附件元数据和附件内容
+  - 不强制 R2，不强制 Cloudflare blob 存储
+  - keep-alive agent 可用 `mails serve` 或自定义 webhook 持续接收入站邮件
+
 ### Phase 3：Setup + mails.dev
 
 目标：`mails setup` 打开配置向导；mails.dev 上线
