@@ -1,5 +1,5 @@
 import type { SendOptions, SendProvider, SendResult } from './types.js'
-import { loadConfig } from './config.js'
+import { loadConfig, resolveApiKey } from './config.js'
 import { createResendProvider } from '../providers/send/resend.js'
 import { createHostedSendProvider } from '../providers/send/hosted.js'
 import { prepareSendAttachments } from './send-attachments.js'
@@ -32,7 +32,13 @@ export async function send(options: SendOptions): Promise<SendResult> {
   const config = loadConfig()
   const provider = resolveProvider()
 
-  const from = options.from ?? config.default_from
+  let from = options.from ?? config.default_from
+
+  // Auto-fetch from address if using hosted mode and not configured
+  if (!from && config.api_key) {
+    from = await resolveApiKey(config.api_key) ?? undefined
+  }
+
   if (!from) {
     throw new Error('No "from" address. Set default_from or pass --from')
   }

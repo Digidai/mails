@@ -43,4 +43,25 @@ export function setConfigValue(key: string, value: string) {
   saveConfig(config as unknown as MailsConfig)
 }
 
+/**
+ * Resolve mailbox + default_from from /v1/me given an api_key.
+ * Saves to config if successful.
+ */
+export async function resolveApiKey(apiKey: string): Promise<string | null> {
+  const apiUrl = process.env.MAILS_API_URL || 'https://mails-dev-worker.o-u-turing.workers.dev'
+  try {
+    const res = await fetch(`${apiUrl}/v1/me`, {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+    })
+    if (!res.ok) return null
+    const data = await res.json() as { mailbox?: string }
+    if (data.mailbox) {
+      setConfigValue('mailbox', data.mailbox)
+      setConfigValue('default_from', data.mailbox)
+      return data.mailbox
+    }
+  } catch {}
+  return null
+}
+
 export { CONFIG_DIR, CONFIG_FILE }

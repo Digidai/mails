@@ -1,4 +1,4 @@
-import { loadConfig, getConfigValue, setConfigValue, CONFIG_FILE } from '../../core/config.js'
+import { loadConfig, getConfigValue, setConfigValue, resolveApiKey, CONFIG_FILE } from '../../core/config.js'
 
 export async function configCommand(args: string[]) {
   const subcommand = args[0]
@@ -13,6 +13,15 @@ export async function configCommand(args: string[]) {
       }
       setConfigValue(key, value)
       console.log(`Set ${key} = ${value}`)
+
+      // When api_key is set, auto-resolve mailbox from /v1/me
+      if (key === 'api_key' && value.startsWith('mk_')) {
+        const mailbox = await resolveApiKey(value)
+        if (mailbox) {
+          console.log(`Resolved mailbox: ${mailbox}`)
+          console.log(`Set default_from = ${mailbox}`)
+        }
+      }
       break
     }
 

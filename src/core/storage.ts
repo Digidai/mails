@@ -1,5 +1,5 @@
 import type { StorageProvider } from './types.js'
-import { loadConfig } from './config.js'
+import { loadConfig, resolveApiKey } from './config.js'
 import { createSqliteProvider } from '../providers/storage/sqlite.js'
 import { createDb9Provider } from '../providers/storage/db9.js'
 import { createRemoteProvider } from '../providers/storage/remote.js'
@@ -23,7 +23,7 @@ export async function getStorage(): Promise<StorageProvider> {
       break
     }
     case 'remote': {
-      _provider = resolveRemoteProvider(config)
+      _provider = await resolveRemoteProvider(config)
       break
     }
     case 'sqlite': {
@@ -31,12 +31,8 @@ export async function getStorage(): Promise<StorageProvider> {
       break
     }
     default: {
-      // Auto-detect:
-      // 1. api_key set → hosted mode, use remote with /v1/* auth endpoints
-      // 2. worker_url set → self-hosted, use remote with /api/* public endpoints
-      // 3. Otherwise → local sqlite
       if (config.api_key || config.worker_url) {
-        _provider = resolveRemoteProvider(config)
+        _provider = await resolveRemoteProvider(config)
       } else {
         _provider = createSqliteProvider()
       }
@@ -48,23 +44,27 @@ export async function getStorage(): Promise<StorageProvider> {
   return _provider
 }
 
-function resolveRemoteProvider(config: {
+async function resolveRemoteProvider(config: {
   api_key?: string
   worker_url?: string
   worker_token?: string
   mailbox?: string
-}): StorageProvider {
+}): Promise<StorageProvider> {
   const apiUrl = process.env.MAILS_API_URL
     || config.worker_url
     || 'https://mails-dev-worker.o-u-turing.workers.dev'
 
-  const mailbox = config.mailbox || ''
+  let mailbox = config.mailbox || ''
+
+  // Auto-fetch mailbox from API if api_key is set but mailbox is empty
+  if (!mailbox && config.api_key) {
+    mailbox = await resolveApiKey(config.api_key) ?? ''
+  }
+
   if (!mailbox) {
     throw new Error('mailbox not configured. Run: mails config set mailbox <address>')
   }
 
-  // Hosted mode: api_key authenticates to /v1/* endpoints
-  // Self-hosted: worker_token authenticates to /api/* endpoints
   const token = config.api_key || config.worker_token
 
   return createRemoteProvider({
