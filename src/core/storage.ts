@@ -6,6 +6,9 @@ import { createRemoteProvider } from '../providers/storage/remote.js'
 
 let _provider: StorageProvider | null = null
 
+/** Reset cached provider (for testing only) */
+export function _resetStorage(provider?: StorageProvider) { _provider = provider ?? null }
+
 export async function getStorage(): Promise<StorageProvider> {
   if (_provider) return _provider
 

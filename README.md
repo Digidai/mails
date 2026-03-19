@@ -114,9 +114,26 @@ mails send --to <email> --subject "Report" --body "See attached" --attach report
 ```bash
 mails inbox                                  # List recent emails
 mails inbox --mailbox agent@test.com         # Specific mailbox
-mails inbox --query "password reset"         # Search emails
+mails inbox --query "password reset"         # Full-text search (ranked by relevance)
 mails inbox --query "invoice" --direction inbound --limit 10
 mails inbox <id>                             # View email details + attachments
+
+# Advanced filters (mails.dev hosted / db9)
+mails inbox --has-attachments                # Only emails with attachments
+mails inbox --attachment-type pdf            # Filter by attachment type
+mails inbox --from github.com               # Filter by sender
+mails inbox --since 2026-03-01 --until 2026-03-20  # Time range
+mails inbox --header "X-Mailer:sendgrid"    # Filter by email header
+
+# Combine any filters
+mails inbox --from github.com --has-attachments --since 2026-03-13
+mails inbox --query "deploy" --attachment-type log --direction inbound
+```
+
+### stats
+
+```bash
+mails stats senders                          # Top senders by frequency
 ```
 
 ### code
@@ -159,10 +176,17 @@ await send({
 // List inbox
 const emails = await getInbox('agent@mails.dev', { limit: 10 })
 
-// Search inbox
+// Search inbox (full-text search with relevance ranking)
 const results = await searchInbox('agent@mails.dev', {
   query: 'password reset',
   direction: 'inbound',
+})
+
+// Advanced filters (mails.dev hosted / db9)
+const pdfs = await getInbox('agent@mails.dev', {
+  has_attachments: true,
+  attachment_type: 'pdf',
+  since: '2026-03-01',
 })
 
 // Wait for verification code
@@ -218,13 +242,20 @@ Local database at `~/.mails/mails.db`. Zero config.
 
 ### db9.ai
 
-Cloud PostgreSQL for AI agents. Full-text search with ranking.
+Cloud PostgreSQL for AI agents. Full-text search with relevance ranking, attachment content search, and advanced filtering.
 
 ```bash
 mails config set storage_provider db9
 mails config set db9_token YOUR_TOKEN
 mails config set db9_database_id YOUR_DB_ID
 ```
+
+With db9, you get:
+- **Weighted FTS** — subject (highest) > sender > body > attachment text
+- **Attachment filters** — by type, by name, with/without attachments
+- **Sender & time filters** — `--from`, `--since`, `--until`
+- **Header queries** — search JSONB email headers
+- **Sender stats** — frequency ranking of all senders
 
 ### Remote (Worker API)
 
@@ -245,12 +276,34 @@ Queries the Worker HTTP API directly. Auto-enabled when `api_key` or `worker_url
 ## Testing
 
 ```bash
-bun test              # Unit + mock E2E tests
+bun test              # Unit + E2E tests (no external deps)
 bun test:coverage     # With coverage report
 bun test:live         # Live E2E with real Resend + Cloudflare (requires .env)
+bun test:all          # All tests including live E2E
 ```
 
-125 unit tests + 42 E2E tests across 6 test suites.
+168 unit tests + 71 E2E tests = **239 tests** across all providers.
+
+### E2E Coverage by Provider
+
+|                           | SQLite | db9   | Remote (OSS) | Remote (Hosted) |
+|---------------------------|--------|-------|--------------|-----------------|
+| Save inbound email        | ✅     | ✅    | N/A          | N/A             |
+| Save email + attachments  | ✅     | ✅    | N/A          | N/A             |
+| Send → receive (real)     | ✅     | —     | ✅           | ✅              |
+| Inbox list                | ✅     | ✅    | ✅           | ✅              |
+| has_attachments flag      | ✅     | ✅    | ✅           | ✅              |
+| Direction filter          | ✅     | ✅    | ✅           | ✅              |
+| Pagination                | ✅     | ✅    | ✅           | ✅              |
+| Email detail              | ✅     | ✅    | ✅           | ✅              |
+| Attachment metadata       | ✅     | ✅    | ✅           | ✅              |
+| Search                    | ✅     | ✅    | ✅           | ✅              |
+| Attachment content search | ✅     | ✅    | —            | —               |
+| Verification code         | ✅     | ✅    | ✅           | ✅              |
+| Download attachment       | ✅     | ✅    | —            | ✅              |
+| Save to disk (--save)     | ✅     | —     | —            | ✅              |
+| Mailbox isolation         | ✅     | ✅    | —            | —               |
+| Outbound recording        | ✅     | —     | N/A          | N/A             |
 
 ## License
 
