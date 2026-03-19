@@ -103,6 +103,82 @@ describe.skipIf(skip)('E2E: db9 inbox search', () => {
     expect(codeResults[0]!.code).toBe('654321')
   })
 
+  test('save email with attachments and retrieve metadata', async () => {
+    const emailId = `att-e2e-${Date.now()}`
+    const attId = `att-${Date.now()}`
+
+    await provider.saveEmail(makeEmail(mailbox, {
+      id: emailId,
+      from_address: 'att-test@example.com',
+      from_name: 'Attachment Test',
+      subject: 'DB9 attachment e2e test',
+      body_text: 'This email has an attachment.',
+      body_html: '',
+      has_attachments: true,
+      attachment_count: 1,
+      attachment_names: 'test-data.csv',
+      attachment_search_text: 'header1,header2\nrow1,row2',
+      attachments: [{
+        id: attId,
+        email_id: emailId,
+        filename: 'test-data.csv',
+        content_type: 'text/csv',
+        size_bytes: 30,
+        content_disposition: 'attachment',
+        content_id: null,
+        mime_part_index: 0,
+        text_content: 'header1,header2\nrow1,row2',
+        text_extraction_status: 'done',
+        storage_key: null,
+        created_at: new Date().toISOString(),
+      }],
+    }))
+
+    // Verify getEmails returns attachment flags
+    const emails = await provider.getEmails(mailbox, { limit: 10 })
+    const match = emails.find(e => e.id === emailId)
+    expect(match).toBeTruthy()
+    expect(match!.has_attachments).toBe(true)
+    expect(match!.attachment_count).toBe(1)
+
+    // Verify getEmail returns attachment detail
+    const detail = await provider.getEmail(emailId)
+    expect(detail).not.toBeNull()
+    expect(detail!.attachments).toBeDefined()
+    expect(detail!.attachments!).toHaveLength(1)
+    expect(detail!.attachments![0]!.filename).toBe('test-data.csv')
+    expect(detail!.attachments![0]!.content_type).toBe('text/csv')
+
+    console.log(`  DB9 attachment e2e: saved and retrieved ${emailId} with 1 attachment`)
+  })
+
+  test('getAttachment returns text content from db9', async () => {
+    // Find the attachment email we saved above
+    const emails = await provider.getEmails(mailbox, { limit: 10 })
+    const attEmail = emails.find(e => e.subject === 'DB9 attachment e2e test')
+    expect(attEmail).toBeTruthy()
+
+    const detail = await provider.getEmail(attEmail!.id)
+    expect(detail?.attachments?.length).toBeGreaterThanOrEqual(1)
+
+    const att = detail!.attachments![0]!
+    const download = await provider.getAttachment!(att.id)
+    expect(download).not.toBeNull()
+    expect(download!.filename).toBe('test-data.csv')
+    expect(new TextDecoder().decode(download!.data)).toContain('header1')
+
+    console.log(`  DB9 getAttachment: downloaded ${download!.filename}`)
+  })
+
+  test('search finds emails by attachment text content via FTS', async () => {
+    const results = await provider.searchEmails(mailbox, { query: 'header1' })
+    expect(results.length).toBeGreaterThanOrEqual(1)
+    const match = results.find(e => e.subject === 'DB9 attachment e2e test')
+    expect(match).toBeTruthy()
+
+    console.log(`  DB9 attachment search: found ${results.length} result(s) for 'header1'`)
+  })
+
   test('prints scoped results via CLI', () => {
     const proc = Bun.spawnSync({
       cmd: [
