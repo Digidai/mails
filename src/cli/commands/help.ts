@@ -32,6 +32,8 @@ Inbox:
   mails inbox --query "reset password"  Search emails in a mailbox
   mails inbox --query "invoice" --direction inbound --limit 10
   mails inbox <id>                      Show email details
+  mails inbox <id> --save               Download attachments to current directory
+  mails inbox <id> --save ./downloads   Download attachments to a directory
 
 Code:
   mails code --to <address>             Wait for a verification code

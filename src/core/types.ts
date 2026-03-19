@@ -118,6 +118,12 @@ export interface EmailSearchOptions extends EmailQueryOptions {
   query: string
 }
 
+export interface AttachmentDownload {
+  data: ArrayBuffer
+  filename: string
+  contentType: string
+}
+
 export interface StorageProvider {
   name: string
   init(): Promise<void>
@@ -129,4 +135,5 @@ export interface StorageProvider {
     timeout?: number
     since?: string
   }): Promise<{ code: string; from: string; subject: string } | null>
+  getAttachment?(id: string): Promise<AttachmentDownload | null>
 }

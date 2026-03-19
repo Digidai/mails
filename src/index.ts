@@ -1,5 +1,5 @@
 export { send } from './core/send.js'
-export { getInbox, searchInbox, getEmail, waitForCode } from './core/receive.js'
+export { getInbox, searchInbox, getEmail, waitForCode, downloadAttachment } from './core/receive.js'
 export { getStorage } from './core/storage.js'
 export { loadConfig, saveConfig, getConfigValue, setConfigValue } from './core/config.js'
 export { createResendProvider } from './providers/send/resend.js'
@@ -10,6 +10,7 @@ export { createRemoteProvider } from './providers/storage/remote.js'
 
 export type {
   Attachment,
+  AttachmentDownload,
   AttachmentTextExtractionStatus,
   Email,
   PreparedAttachment,

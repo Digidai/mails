@@ -1,4 +1,6 @@
-import { getInbox, searchInbox, getEmail } from '../../core/receive.js'
+import { writeFile, mkdir } from 'node:fs/promises'
+import { join } from 'node:path'
+import { getInbox, searchInbox, getEmail, downloadAttachment } from '../../core/receive.js'
 import { loadConfig } from '../../core/config.js'
 
 function parseArgs(args: string[]): Record<string, string> {
@@ -11,6 +13,8 @@ function parseArgs(args: string[]): Record<string, string> {
       if (value && !value.startsWith('--')) {
         result[key] = value
         i++
+      } else {
+        result[key] = ''
       }
     } else if (!result._positional) {
       result._positional = arg
@@ -38,12 +42,32 @@ export async function inboxCommand(args: string[]) {
     if (email.attachments?.length) {
       console.log('Attachments:')
       for (const attachment of email.attachments) {
-        const size = attachment.size_bytes ?? 0
-        console.log(`- ${attachment.filename} (${attachment.content_type}, ${size} bytes)`)
+        const size = attachment.size_bytes ?? (attachment as unknown as Record<string, unknown>).size ?? 0
+        console.log(`  ${attachment.id}  ${attachment.filename} (${attachment.content_type}, ${size} bytes)`)
       }
     }
     console.log('---')
     console.log(email.body_text || '(no text body)')
+
+    // --save: download all attachments to disk
+    if (opts.save !== undefined && email.attachments?.length) {
+      const dir = opts.save || '.'
+      await mkdir(dir, { recursive: true })
+      for (const att of email.attachments) {
+        try {
+          const download = await downloadAttachment(att.id)
+          if (!download) {
+            console.error(`Attachment not found: ${att.id}`)
+            continue
+          }
+          const dest = join(dir, download.filename)
+          await writeFile(dest, Buffer.from(download.data))
+          console.log(`Saved: ${dest}`)
+        } catch (err) {
+          console.error(`Failed to download ${att.filename}: ${(err as Error).message}`)
+        }
+      }
+    }
     return
   }
 
@@ -72,7 +96,8 @@ export async function inboxCommand(args: string[]) {
 
   for (const email of emails) {
     const code = email.code ? ` [${email.code}]` : ''
+    const clip = email.attachment_count ? ` +${email.attachment_count}att` : ''
     const from = email.from_name || email.from_address
-    console.log(`${email.id.slice(0, 8)}  ${email.received_at.slice(0, 16)}  ${from.padEnd(24).slice(0, 24)}  ${email.subject.slice(0, 40)}${code}`)
+    console.log(`${email.id.slice(0, 8)}  ${email.received_at.slice(0, 16)}  ${from.padEnd(24).slice(0, 24)}  ${email.subject.slice(0, 40)}${code}${clip}`)
   }
 }

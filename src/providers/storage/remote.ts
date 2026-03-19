@@ -1,4 +1,4 @@
-import type { Email, EmailQueryOptions, EmailSearchOptions, StorageProvider } from '../../core/types.js'
+import type { AttachmentDownload, Email, EmailQueryOptions, EmailSearchOptions, StorageProvider } from '../../core/types.js'
 
 interface RemoteProviderOptions {
   /** Worker API base URL */
@@ -34,6 +34,7 @@ export function createRemoteProvider(options: RemoteProviderOptions): StoragePro
   function inboxPath() { return useAuthApi ? '/v1/inbox' : '/api/inbox' }
   function codePath() { return useAuthApi ? '/v1/code' : '/api/code' }
   function emailPath() { return useAuthApi ? '/v1/email' : '/api/email' }
+  function attachmentPath() { return useAuthApi ? '/v1/attachment' : '/api/attachment' }
 
   function withMailbox(params: Record<string, string | number>): Record<string, string | number> {
     if (!useAuthApi) {
@@ -88,6 +89,22 @@ export function createRemoteProvider(options: RemoteProviderOptions): StoragePro
         throw new Error(`API error: ${data.error ?? res.statusText}`)
       }
       return await res.json() as Email
+    },
+
+    async getAttachment(id): Promise<AttachmentDownload | null> {
+      const res = await apiFetch(attachmentPath(), { id })
+      if (!res.ok) {
+        if (res.status === 404) return null
+        const data = await res.json() as { error?: string }
+        throw new Error(`API error: ${data.error ?? res.statusText}`)
+      }
+      const contentDisposition = res.headers.get('Content-Disposition') ?? ''
+      const filenameMatch = contentDisposition.match(/filename="([^"]+)"/)
+      return {
+        data: await res.arrayBuffer(),
+        filename: filenameMatch?.[1] ?? 'download',
+        contentType: res.headers.get('Content-Type') ?? 'application/octet-stream',
+      }
     },
 
     async getCode(_mailbox, options) {

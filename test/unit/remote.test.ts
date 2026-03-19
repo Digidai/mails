@@ -183,6 +183,118 @@ describe('Remote provider', () => {
     expect(provider.getEmail('x')).rejects.toThrow('API error')
   })
 
+  // --- Attachment passthrough ---
+
+  test('getEmail passes through attachments from API', async () => {
+    const apiEmail = {
+      id: 'att-1',
+      mailbox: MAILBOX,
+      from_address: 'sender@test.com',
+      from_name: 'Sender',
+      to_address: MAILBOX,
+      subject: 'With attachment',
+      body_text: 'See attached',
+      body_html: '',
+      code: null,
+      headers: {},
+      metadata: {},
+      direction: 'inbound',
+      status: 'received',
+      has_attachments: true,
+      attachment_count: 2,
+      attachment_names: 'report.pdf data.csv',
+      attachments: [
+        {
+          id: 'a1',
+          email_id: 'att-1',
+          filename: 'report.pdf',
+          content_type: 'application/pdf',
+          size_bytes: 12345,
+          content_disposition: 'attachment',
+          content_id: null,
+          mime_part_index: 0,
+          text_content: '',
+          text_extraction_status: 'unsupported',
+          storage_key: null,
+          downloadable: false,
+          created_at: '2026-03-20T00:00:00Z',
+        },
+        {
+          id: 'a2',
+          email_id: 'att-1',
+          filename: 'data.csv',
+          content_type: 'text/csv',
+          size_bytes: 456,
+          content_disposition: 'attachment',
+          content_id: null,
+          mime_part_index: 1,
+          text_content: 'col1,col2\nval1,val2',
+          text_extraction_status: 'done',
+          storage_key: null,
+          downloadable: false,
+          created_at: '2026-03-20T00:00:00Z',
+        },
+      ],
+      received_at: '2026-03-20T00:00:00Z',
+      created_at: '2026-03-20T00:00:00Z',
+    }
+
+    globalThis.fetch = mock(async () => {
+      return new Response(JSON.stringify(apiEmail))
+    }) as typeof fetch
+
+    const provider = createRemoteProvider({ url: API, mailbox: MAILBOX })
+    const email = await provider.getEmail('att-1')
+
+    expect(email).not.toBeNull()
+    expect(email!.has_attachments).toBe(true)
+    expect(email!.attachment_count).toBe(2)
+    expect(email!.attachments).toHaveLength(2)
+    expect(email!.attachments![0]!.filename).toBe('report.pdf')
+    expect(email!.attachments![0]!.content_type).toBe('application/pdf')
+    expect(email!.attachments![0]!.size_bytes).toBe(12345)
+    expect(email!.attachments![1]!.filename).toBe('data.csv')
+    expect(email!.attachments![1]!.text_content).toBe('col1,col2\nval1,val2')
+  })
+
+  test('getEmails passes through attachment_count from API', async () => {
+    globalThis.fetch = mock(async () => {
+      return new Response(JSON.stringify({
+        emails: [
+          { id: '1', subject: 'No attachment', has_attachments: false, attachment_count: 0 },
+          { id: '2', subject: 'Has attachment', has_attachments: true, attachment_count: 3 },
+        ],
+      }))
+    }) as typeof fetch
+
+    const provider = createRemoteProvider({ url: API, mailbox: MAILBOX })
+    const emails = await provider.getEmails(MAILBOX)
+
+    expect(emails).toHaveLength(2)
+    expect(emails[0]!.attachment_count).toBe(0)
+    expect(emails[1]!.attachment_count).toBe(3)
+    expect(emails[1]!.has_attachments).toBe(true)
+  })
+
+  test('getEmail works for email without attachments', async () => {
+    globalThis.fetch = mock(async () => {
+      return new Response(JSON.stringify({
+        id: 'no-att',
+        subject: 'Plain email',
+        has_attachments: false,
+        attachment_count: 0,
+        attachments: [],
+      }))
+    }) as typeof fetch
+
+    const provider = createRemoteProvider({ url: API, mailbox: MAILBOX })
+    const email = await provider.getEmail('no-att')
+
+    expect(email).not.toBeNull()
+    expect(email!.attachments).toHaveLength(0)
+    expect(email!.has_attachments).toBe(false)
+  })
+
   // --- Default params ---
 
   test('uses defaults when no options provided', async () => {

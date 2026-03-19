@@ -170,6 +170,7 @@ describe('CLI: inbox command', () => {
       getInbox: getInboxSpy,
       searchInbox: searchInboxSpy,
       getEmail: getEmailSpy,
+      downloadAttachment: mock(async () => null),
     }))
     mock.module('../../src/core/config.js', () => ({
       loadConfig: () => ({ mailbox: 'agent@test.com', send_provider: 'resend', storage_provider: 'sqlite' }),
@@ -201,6 +202,7 @@ describe('CLI: inbox command', () => {
       getInbox: getInboxSpy,
       searchInbox: searchInboxSpy,
       getEmail: mock(async () => null),
+      downloadAttachment: mock(async () => null),
     }))
     mock.module('../../src/core/config.js', () => ({
       loadConfig: () => ({ mailbox: 'agent@test.com', send_provider: 'resend', storage_provider: 'sqlite' }),
@@ -222,5 +224,125 @@ describe('CLI: inbox command', () => {
     expect(output.join('\n')).toContain('abcdef12')
     expect(output.join('\n')).toContain('Invoice update')
     expect(output.join('\n')).toContain('[123456]')
+  })
+
+  test('list mode shows attachment indicator when email has attachments', async () => {
+    const email = makeEmail({
+      id: 'att-email-1234',
+      subject: 'Report attached',
+      attachment_count: 2,
+    })
+    const getInboxSpy = mock(async () => [email])
+    const output: string[] = []
+
+    mock.module('../../src/core/receive.js', () => ({
+      getInbox: getInboxSpy,
+      searchInbox: mock(async () => []),
+      getEmail: mock(async () => null),
+      downloadAttachment: mock(async () => null),
+    }))
+    mock.module('../../src/core/config.js', () => ({
+      loadConfig: () => ({ mailbox: 'agent@test.com', send_provider: 'resend', storage_provider: 'sqlite' }),
+    }))
+
+    console.log = (msg?: unknown) => { output.push(String(msg ?? '')) }
+    console.error = () => {}
+    process.exit = ((code?: number) => { throw new Error(`exit:${code ?? 0}`) }) as typeof process.exit
+
+    const { inboxCommand } = await importInboxCommand()
+    await inboxCommand([])
+
+    const line = output.join('\n')
+    expect(line).toContain('att-emai')
+    expect(line).toContain('Report attached')
+    expect(line).toContain('+2att')
+  })
+
+  test('list mode omits attachment indicator when no attachments', async () => {
+    const email = makeEmail({ id: 'no-att-12345', subject: 'Plain email' })
+    const getInboxSpy = mock(async () => [email])
+    const output: string[] = []
+
+    mock.module('../../src/core/receive.js', () => ({
+      getInbox: getInboxSpy,
+      searchInbox: mock(async () => []),
+      getEmail: mock(async () => null),
+      downloadAttachment: mock(async () => null),
+    }))
+    mock.module('../../src/core/config.js', () => ({
+      loadConfig: () => ({ mailbox: 'agent@test.com', send_provider: 'resend', storage_provider: 'sqlite' }),
+    }))
+
+    console.log = (msg?: unknown) => { output.push(String(msg ?? '')) }
+    console.error = () => {}
+    process.exit = ((code?: number) => { throw new Error(`exit:${code ?? 0}`) }) as typeof process.exit
+
+    const { inboxCommand } = await importInboxCommand()
+    await inboxCommand([])
+
+    const line = output.join('\n')
+    expect(line).toContain('no-att-1')
+    expect(line).toContain('Plain email')
+    expect(line).not.toContain('+')  // no "+Natt" indicator
+  })
+
+  test('detail view shows attachment list', async () => {
+    const email = makeEmail({
+      id: 'detail-att-123',
+      subject: 'With files',
+      attachments: [
+        {
+          id: 'a1',
+          email_id: 'detail-att-123',
+          filename: 'report.pdf',
+          content_type: 'application/pdf',
+          size_bytes: 12345,
+          content_disposition: 'attachment',
+          content_id: null,
+          mime_part_index: 0,
+          text_content: '',
+          text_extraction_status: 'unsupported' as const,
+          storage_key: null,
+          created_at: '2026-03-20T00:00:00Z',
+        },
+        {
+          id: 'a2',
+          email_id: 'detail-att-123',
+          filename: 'notes.txt',
+          content_type: 'text/plain',
+          size_bytes: 89,
+          content_disposition: 'attachment',
+          content_id: null,
+          mime_part_index: 1,
+          text_content: 'some notes',
+          text_extraction_status: 'done' as const,
+          storage_key: null,
+          created_at: '2026-03-20T00:00:00Z',
+        },
+      ],
+    })
+    const output: string[] = []
+
+    mock.module('../../src/core/receive.js', () => ({
+      getInbox: mock(async () => []),
+      searchInbox: mock(async () => []),
+      getEmail: mock(async () => email),
+      downloadAttachment: mock(async () => null),
+    }))
+
+    console.log = (msg?: unknown) => { output.push(String(msg ?? '')) }
+    console.error = () => {}
+    process.exit = ((code?: number) => { throw new Error(`exit:${code ?? 0}`) }) as typeof process.exit
+
+    const { inboxCommand } = await importInboxCommand()
+    await inboxCommand(['detail-att-123'])
+
+    const text = output.join('\n')
+    expect(text).toContain('Attachments:')
+    expect(text).toContain('report.pdf')
+    expect(text).toContain('application/pdf')
+    expect(text).toContain('12345')
+    expect(text).toContain('notes.txt')
+    expect(text).toContain('text/plain')
   })
 })
