@@ -3,6 +3,7 @@ import { loadConfig, resolveApiKey } from './config.js'
 import { createResendProvider } from '../providers/send/resend.js'
 import { createHostedSendProvider } from '../providers/send/hosted.js'
 import { prepareSendAttachments } from './send-attachments.js'
+import { getStorage } from './storage.js'
 
 function resolveProvider(): SendProvider {
   const config = loadConfig()
@@ -50,7 +51,7 @@ export async function send(options: SendOptions): Promise<SendResult> {
 
   const attachments = await prepareSendAttachments(options.attachments)
 
-  return provider.send({
+  const result = await provider.send({
     from,
     to,
     subject: options.subject,
@@ -60,4 +61,32 @@ export async function send(options: SendOptions): Promise<SendResult> {
     headers: options.headers,
     attachments,
   })
+
+  // Record outbound email in local storage (best-effort, skip for remote)
+  try {
+    const storage = await getStorage()
+    if (storage.name !== 'remote') {
+      await storage.saveEmail({
+        id: result.id,
+        mailbox: from,
+        from_address: from,
+        from_name: '',
+        to_address: to.join(', '),
+        subject: options.subject,
+        body_text: options.text ?? '',
+        body_html: options.html ?? '',
+        code: null,
+        headers: options.headers ?? {},
+        metadata: { provider: result.provider },
+        direction: 'outbound',
+        status: 'sent',
+        received_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      })
+    }
+  } catch {
+    // Best-effort: don't fail the send if storage write fails
+  }
+
+  return result
 }
