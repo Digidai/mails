@@ -17,24 +17,26 @@ Email infrastructure for AI agents. Send and receive emails programmatically.
     |  mails send --to user@example.com                 |  email to agent@mails.dev
     |                                                   |
     v                                                   v
-+--------+                                    +-------------------+
-|  CLI   |                                    | Cloudflare Email  |
-|  /SDK  |                                    |     Routing       |
-+--------+                                    +-------------------+
-    |                                                   |
-    |  POST /v1/send (hosted)                           |  email() handler
-    |  POST /api/send (self-hosted)                     |
-    |                                                   v
-    v                                                   |
-+---------------------------------------------------+   |
-|                    Worker                         |<--+
-|  mails.dev (hosted)  or  your own (self-hosted)   |
-|                                                   |
-|  +----------+    +---------+    +--------------+  |
-|  | Resend   |    |   D1    |    |  R2 (hosted) |  |
-|  | (send)   |    | (store) |    | (attachments)|  |
-|  +----------+    +---------+    +--------------+  |
-+---------------------------------------------------+
++--------+         +----------+              +-------------------+
+|  CLI   |-------->|  Resend  |              | Cloudflare Email  |
+|  /SDK  |         |  (ext.)  |              |     Routing       |
++--------+         +----------+              +-------------------+
+    |                    ^                              |
+    |  /v1/send          |  send API                    |  email() handler
+    |  /api/send         |                              |
+    v                    |                              v
++-----------------------------------------------------------+
+|                       Worker                              |
+|                                                           |
+|  mails.dev (hosted)        or     your own (self-hosted)  |
+|  +-----------------------------------------+              |
+|  |  +----------+    +----------------+     |  +---------+ |
+|  |  |  db9.ai  |    |  fs9 (files)   |     |  |   D1    | |
+|  |  | FTS, adv |    | (attachments)  |     |  | (store) | |
+|  |  |  queries |    +----------------+     |  +---------+ |
+|  |  +----------+                           |              |
+|  +-----------------------------------------+              |
++-----------------------------------------------------------+
           |                           |
     query via CLI/SDK           mails sync
      (remote provider)        (pull to local)
@@ -46,7 +48,7 @@ Email infrastructure for AI agents. Send and receive emails programmatically.
                           | (local) |  |  (cloud)  |
                           +---------+  +-----------+
                            offline      FTS search
-                           backup       advanced filters
+                           backup       adv. filters
 ```
 
 ## Features
