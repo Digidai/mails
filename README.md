@@ -10,40 +10,43 @@ Email infrastructure for AI agents. Send and receive emails programmatically.
 ## How it works
 
 ```
-                          SENDING                                    RECEIVING
+                       SENDING                                     RECEIVING
 
-  Agent                                              External
-    |                                                  |
-    |  mails send --to user@example.com                |  email to agent@mails.dev
-    |                                                  |
-    v                                                  v
-+--------+         +----------+              +-------------------+
-|  CLI   |-------->|  Resend  |---> SMTP --->| Cloudflare Email  |
-|  /SDK  |         |   API    |              |     Routing       |
-+--------+         +----------+              +-------------------+
-    |                                                  |
-    |  or POST /v1/send (hosted)                       |  email() handler
-    |                                                  v
-    v                                          +-------------+
-+-------------------+                          |   Worker    |
-| mails.dev Cloud   |                          | (your own)  |
-| (100 free/month)  |                          +-------------+
-+-------------------+                                  |
-                                                       |  store
-                                                       v
-                                  +--------------------------------------+
-                                  |           Storage Provider           |
-                                  |                                      |
-                                  |  D1 (Worker)  /  SQLite  /  db9.ai  |
-                                  +--------------------------------------+
-                                                       |
-                                              query via CLI/SDK
-                                                       |
-                                                       v
-                                                    Agent
-                                              mails inbox
-                                              mails inbox --query "code"
-                                              mails code --to agent@mails.dev
+  Agent                                               External
+    |                                                   |
+    |  mails send --to user@example.com                 |  email to agent@mails.dev
+    |                                                   |
+    v                                                   v
++--------+                                    +-------------------+
+|  CLI   |                                    | Cloudflare Email  |
+|  /SDK  |                                    |     Routing       |
++--------+                                    +-------------------+
+    |                                                   |
+    |  POST /v1/send (hosted)                           |  email() handler
+    |  POST /api/send (self-hosted)                     |
+    |                                                   v
+    v                                                   |
++---------------------------------------------------+   |
+|                    Worker                         |<--+
+|                                                   |
+|  mails.dev (hosted)  or  your own (self-hosted)   |
+|                                                   |
+|  +----------+    +---------+    +--------------+  |
+|  | Resend   |    |   D1    |    |  R2 (hosted) |  |
+|  | (send)   |    | (store) |    | (attachments)|  |
+|  +----------+    +---------+    +--------------+  |
++---------------------------------------------------+
+                        |
+          +-------------+-------------+
+          |                           |
+    query via CLI/SDK           mails sync
+    (mails inbox)            (pull to local)
+          |                           |
+          v                           v
+       Agent                  +-------------+
+                              | Local SQLite|
+                              |  (offline)  |
+                              +-------------+
 ```
 
 ## Features
