@@ -34,7 +34,7 @@ Email infrastructure for AI agents. Send and receive emails programmatically.
                                   +--------------------------------------+
                                   |           Storage Provider           |
                                   |                                      |
-                                  |  D1 (Worker)  /  SQLite  /  db9.ai  |
+                                  |     D1 (Worker)  /  SQLite          |
                                   +--------------------------------------+
                                                        |
                                               query via CLI/SDK
@@ -53,7 +53,7 @@ Email infrastructure for AI agents. Send and receive emails programmatically.
 - **Search inbox** — keyword search across subject, body, sender, code
 - **Verification code extraction** — auto-extracts codes from emails (EN/ZH/JA/KO)
 - **Attachments** — send files via CLI (`--attach`) or SDK, receive and parse MIME attachments
-- **Storage providers** — local SQLite, [db9.ai](https://db9.ai) cloud PostgreSQL, or remote Worker API
+- **Storage providers** — local SQLite (for dev) or remote Worker API
 - **Zero runtime dependencies** — Resend provider uses raw `fetch()`
 - **Hosted service** — free `@mails.dev` mailboxes via `mails claim`
 - **Self-hosted** — deploy your own Worker with optional AUTH_TOKEN
@@ -170,77 +170,178 @@ const code = await waitForCode('agent@mails.dev', { timeout: 30 })
 if (code) console.log(code.code) // "123456"
 ```
 
-## Email Worker
+## Self-Hosted Deployment (Full Guide)
 
-The `worker/` directory contains a Cloudflare Email Routing Worker for receiving emails.
+Run the entire email system on your own domain using Cloudflare + Resend. No dependency on mails.dev.
 
-### Setup
+### Prerequisites
+
+| What | Why | Cost |
+|------|-----|------|
+| A domain (e.g. `example.com`) | Email address `agent@example.com` | You already own one |
+| Cloudflare account | DNS, Email Routing, Worker, D1 | Free tier is enough |
+| Resend account | SMTP delivery | Free 100 emails/day |
+
+### Step 1: Add domain to Cloudflare
+
+If your domain's DNS is not already on Cloudflare, add it at [dash.cloudflare.com](https://dash.cloudflare.com). Update your registrar's nameservers to the ones Cloudflare provides.
+
+### Step 2: Set up Resend for sending
+
+1. Create a [Resend](https://resend.com) account
+2. Go to **Domains** → **Add Domain** → enter your domain (e.g. `example.com`)
+3. Resend will give you DNS records to add. Go to Cloudflare DNS and add:
+   - **SPF** — `TXT` record on `@`: `v=spf1 include:amazonses.com ~all` (Resend uses SES)
+   - **DKIM** — `CNAME` records as provided by Resend (usually 3 records)
+   - **DMARC** — `TXT` record on `_dmarc`: `v=DMARC1; p=none;` (start with `none`, tighten later)
+4. Wait for Resend to verify your domain (usually minutes, can take up to 48h)
+5. Copy your Resend API key (`re_...`) from the Resend dashboard
+
+### Step 3: Deploy the Worker
 
 ```bash
 cd worker
 bun install
+
+# Create D1 database
 wrangler d1 create mails
-# Edit wrangler.toml — set your D1 database ID
+# → Copy the database_id from the output
+
+# Edit wrangler.toml — paste your database_id
+# Replace REPLACE_WITH_YOUR_DATABASE_ID with the actual ID
+
+# Initialize database schema
 wrangler d1 execute mails --file=schema.sql
+
+# Set secrets
+wrangler secret put AUTH_TOKEN         # Choose a strong random token
+wrangler secret put RESEND_API_KEY     # Paste your re_... key from Resend
+
+# Deploy
+wrangler deploy
+# → Note the Worker URL: https://mails-worker.<your-subdomain>.workers.dev
+```
+
+### Step 4: Set up Cloudflare Email Routing
+
+1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com) → your domain → **Email** → **Email Routing**
+2. Click **Enable Email Routing** (Cloudflare will add MX records automatically)
+3. Go to **Routing rules** → **Catch-all address** → set action to **Send to a Worker** → select your deployed Worker
+4. Now all emails to `*@example.com` will be routed to your Worker
+
+### Step 5: (Optional) Create R2 bucket for large attachments
+
+```bash
+wrangler r2 create mails-attachments
+```
+
+The R2 binding is already configured in `wrangler.toml`. Redeploy after creating the bucket:
+
+```bash
 wrangler deploy
 ```
 
-Then configure Cloudflare Email Routing to forward to this worker.
-
-### Secure the Worker (optional)
+### Step 6: Configure the CLI
 
 ```bash
-wrangler secret put AUTH_TOKEN    # Set a secret token
+mails config set worker_url https://mails-worker.<your-subdomain>.workers.dev
+mails config set worker_token YOUR_AUTH_TOKEN       # Same token from Step 3
+mails config set mailbox agent@example.com          # Your email address
+mails config set default_from agent@example.com     # Default sender
 ```
 
-If `AUTH_TOKEN` is set, all `/api/*` endpoints require `Authorization: Bearer <token>`. `/health` is always public.
+### Step 7: Verify
 
-### Worker API
+```bash
+# Check Worker is reachable
+curl https://mails-worker.<your-subdomain>.workers.dev/health
+
+# Check inbox (should be empty)
+mails inbox
+
+# Send a test email
+mails send --to your-personal@gmail.com --subject "Test" --body "Hello from self-hosted mails"
+
+# Send an email TO your mailbox from any email client, then:
+mails inbox
+```
+
+### Architecture after setup
+
+```
+Your Agent                              External sender
+    |                                        |
+    |  mails send / mails inbox              |  email to agent@example.com
+    v                                        v
++--------+                         +-------------------+
+|  CLI   |------ /api/send ------->|  Cloudflare Email |
+|  /SDK  |<----- /api/inbox -------|     Routing       |
++--------+                         +-------------------+
+    |                                        |
+    v                                        v
++--------------------------------------------------+
+|              Your Cloudflare Worker               |
+|  /api/send → Resend API → SMTP delivery          |
+|  /api/inbox, /api/code → D1 query (FTS5 search)  |
+|  email() handler → parse MIME → store in D1       |
++--------------------------------------------------+
+    |               |
+    v               v
++--------+    +------------+
+|   D1   |    |     R2     |
+| emails |    | attachments|
++--------+    +------------+
+```
+
+### Worker Secrets Reference
+
+| Secret | Required | Description |
+|--------|----------|-------------|
+| `AUTH_TOKEN` | Recommended | API authentication token. If set, all `/api/*` endpoints require `Authorization: Bearer <token>` |
+| `RESEND_API_KEY` | Yes (for sending) | Resend API key (`re_...`). The Worker uses this to send emails via `/api/send` |
+| `WEBHOOK_SECRET` | Optional | HMAC-SHA256 key for signing webhook payloads (`X-Webhook-Signature` header) |
+
+### Worker API Endpoints
 
 | Endpoint | Description |
 |----------|-------------|
+| `POST /api/send` | Send email (requires `RESEND_API_KEY` secret) |
 | `GET /api/inbox?to=<addr>&limit=20` | List emails |
-| `GET /api/inbox?to=<addr>&query=<text>` | Search emails |
+| `GET /api/inbox?to=<addr>&query=<text>` | Search emails (FTS5 full-text search) |
 | `GET /api/code?to=<addr>&timeout=30` | Long-poll for verification code |
 | `GET /api/email?id=<id>` | Get email by ID (with attachments) |
-| `GET /health` | Health check (always public) |
+| `DELETE /api/email?id=<id>` | Delete email (and its attachments + R2 objects) |
+| `GET /api/attachment?id=<id>` | Download attachment |
+| `GET /api/me` | Worker info and capabilities |
+| `GET /health` | Health check (always public, no auth) |
+
+### Send Priority
+
+When the CLI/SDK sends an email, it checks config in this order:
+
+1. `worker_url` → sends via your Worker's `/api/send` (recommended for self-hosted)
+2. `api_key` → sends via mails.dev hosted service
+3. `resend_api_key` → sends directly to Resend API
+
+Once `worker_url` is set, you don't need `resend_api_key` on the client — the Worker holds the Resend key as a secret.
 
 ## Storage Providers
 
 The CLI auto-detects the storage provider:
-- `api_key` in config → remote (mails.dev hosted)
-- `worker_url` in config → remote (self-hosted Worker)
-- Otherwise → local SQLite
-
-### SQLite (default)
-
-Local database at `~/.mails/mails.db`. Zero config.
-
-### db9.ai
-
-Cloud PostgreSQL for AI agents. Full-text search with ranking.
-
-```bash
-mails config set storage_provider db9
-mails config set db9_token YOUR_TOKEN
-mails config set db9_database_id YOUR_DB_ID
-```
-
-### Remote (Worker API)
-
-Queries the Worker HTTP API directly. Auto-enabled when `api_key` or `worker_url` is configured.
+- `api_key` or `worker_url` in config → remote (queries Worker API)
+- Otherwise → local SQLite (`~/.mails/mails.db`)
 
 ## Config Keys
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `mailbox` | | Your receiving address |
-| `api_key` | | API key for mails.dev hosted service |
-| `worker_url` | | Self-hosted Worker URL |
-| `worker_token` | | Auth token for self-hosted Worker |
-| `resend_api_key` | | Resend API key |
-| `default_from` | | Default sender address |
-| `storage_provider` | auto | `sqlite`, `db9`, or `remote` |
+| Key | Set by | Description |
+|-----|--------|-------------|
+| `mailbox` | `mails claim` or manual | Your receiving address |
+| `api_key` | `mails claim` | API key for mails.dev hosted service (mk_...) |
+| `worker_url` | manual | Self-hosted Worker URL |
+| `worker_token` | manual | Auth token for self-hosted Worker |
+| `resend_api_key` | manual | Resend API key (not needed when worker_url is set) |
+| `default_from` | `mails claim` or manual | Default sender address |
+| `storage_provider` | auto | `sqlite` or `remote` (auto-detected) |
 
 ## Testing
 

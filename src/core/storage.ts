@@ -1,47 +1,36 @@
 import type { StorageProvider } from './types.js'
 import { loadConfig, resolveApiKey } from './config.js'
 import { createSqliteProvider } from '../providers/storage/sqlite.js'
-import { createDb9Provider } from '../providers/storage/db9.js'
 import { createRemoteProvider } from '../providers/storage/remote.js'
 
 let _provider: StorageProvider | null = null
+let _providerKey: string | null = null
 
 export async function getStorage(): Promise<StorageProvider> {
-  if (_provider) return _provider
-
   const config = loadConfig()
+  const providerKey = getProviderKey(config)
 
-  switch (config.storage_provider) {
-    case 'db9': {
-      if (!config.db9_token) {
-        throw new Error('db9_token not configured. Run: mails config set db9_token <token>')
-      }
-      if (!config.db9_database_id) {
-        throw new Error('db9_database_id not configured. Run: mails config set db9_database_id <id>')
-      }
-      _provider = createDb9Provider(config.db9_token, config.db9_database_id)
-      break
-    }
-    case 'remote': {
-      _provider = await resolveRemoteProvider(config)
-      break
-    }
-    case 'sqlite': {
-      _provider = createSqliteProvider()
-      break
-    }
-    default: {
-      if (config.api_key || config.worker_url) {
-        _provider = await resolveRemoteProvider(config)
-      } else {
-        _provider = createSqliteProvider()
-      }
-      break
-    }
+  if (_provider && _providerKey === providerKey) {
+    return _provider
+  }
+
+  await closeProvider(_provider)
+
+  if (config.api_key || config.worker_url || config.storage_provider === 'remote') {
+    _provider = await resolveRemoteProvider(config)
+  } else {
+    _provider = createSqliteProvider()
   }
 
   await _provider.init()
+  _providerKey = providerKey
   return _provider
+}
+
+export async function resetStorage(): Promise<void> {
+  await closeProvider(_provider)
+  _provider = null
+  _providerKey = null
 }
 
 async function resolveRemoteProvider(config: {
@@ -72,5 +61,27 @@ async function resolveRemoteProvider(config: {
     mailbox,
     apiKey: config.api_key,
     token,
+  })
+}
+
+async function closeProvider(provider: StorageProvider | null): Promise<void> {
+  if (!provider?.close) return
+  await provider.close()
+}
+
+function getProviderKey(config: {
+  api_key?: string
+  worker_url?: string
+  worker_token?: string
+  mailbox?: string
+  storage_provider?: string
+}): string {
+  return JSON.stringify({
+    api_key: config.api_key ?? '',
+    worker_url: config.worker_url ?? '',
+    worker_token: config.worker_token ?? '',
+    mailbox: config.mailbox ?? '',
+    storage_provider: config.storage_provider ?? '',
+    api_url: process.env.MAILS_API_URL ?? '',
   })
 }

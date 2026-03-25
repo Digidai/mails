@@ -75,6 +75,7 @@ export interface SendOptions {
 export interface SendResult {
   id: string
   provider: string
+  provider_id?: string
 }
 
 export interface MailsConfig {
@@ -84,10 +85,6 @@ export interface MailsConfig {
   send_provider: string
   storage_provider: string
   resend_api_key?: string
-  db9_token?: string
-  db9_database_id?: string
-  cloudflare_api_token?: string
-  cloudflare_zone_id?: string
   worker_url?: string
   worker_token?: string
   default_from?: string
@@ -121,10 +118,12 @@ export interface EmailSearchOptions extends EmailQueryOptions {
 export interface StorageProvider {
   name: string
   init(): Promise<void>
+  close?(): Promise<void> | void
   saveEmail(email: Email): Promise<void>
   getEmails(mailbox: string, options?: EmailQueryOptions): Promise<Email[]>
   searchEmails(mailbox: string, options: EmailSearchOptions): Promise<Email[]>
   getEmail(id: string): Promise<Email | null>
+  deleteEmail?(id: string): Promise<boolean>
   getCode(mailbox: string, options?: {
     timeout?: number
     since?: string

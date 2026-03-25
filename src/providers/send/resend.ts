@@ -50,7 +50,7 @@ export function createResendProvider(apiKey: string): SendProvider {
       }
 
       const data = await res.json() as ResendResponse
-      return { id: data.id, provider: 'resend' }
+      return { id: data.id, provider: 'resend', provider_id: data.id }
     },
   }
 }

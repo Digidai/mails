@@ -123,7 +123,7 @@ mails send --to user@example.com --subject "Report" --body "See attached" --atta
 mails send --to user@example.com --subject "Files" --body "Two files" --attach a.txt --attach b.csv
 ```
 
-Uses `default_from` from config if `--from` is not specified. Requires `resend_api_key` in config.
+Uses `default_from` from config if `--from` is not specified. Send priority: `worker_url` (via Worker /api/send) > `api_key` (via mails.dev) > `resend_api_key` (direct Resend).
 
 ### inbox
 
@@ -161,40 +161,65 @@ Config file: `~/.mails/config.json`
 | `api_key` | `mails claim` | API key for hosted mails.dev service (mk_...) |
 | `resend_api_key` | manual | Resend API key for sending emails |
 | `default_from` | manual | Default sender address |
-| `storage_provider` | manual | `sqlite`, `db9`, or `remote` (auto-detected) |
+| `storage_provider` | manual | `sqlite` or `remote` (auto-detected) |
 | `worker_url` | manual | Self-hosted Worker URL (enables remote provider) |
 | `worker_token` | manual | Auth token for self-hosted Worker |
 
 ## Self-Hosted Setup
 
-Deploy your own Worker instead of using mails.dev:
+Deploy your own Worker instead of using mails.dev. Requires: a domain on Cloudflare + a Resend account.
+
+### 1. Set up Resend (sending)
+
+1. Register at [resend.com](https://resend.com) → **Domains** → **Add Domain**
+2. Add the DNS records Resend provides to your Cloudflare DNS:
+   - SPF: `TXT` on `@` → `v=spf1 include:amazonses.com ~all`
+   - DKIM: 3 `CNAME` records as provided
+   - DMARC: `TXT` on `_dmarc` → `v=DMARC1; p=none;`
+3. Wait for verification, then copy your API key (`re_...`)
+
+### 2. Deploy Worker
 
 ```bash
 cd worker
 bun install
 wrangler d1 create mails
-# Edit wrangler.toml — set your D1 database ID
+# Edit wrangler.toml — paste the database_id from the output above
 wrangler d1 execute mails --file=schema.sql
+wrangler secret put AUTH_TOKEN           # strong random token for API auth
+wrangler secret put RESEND_API_KEY       # your re_... key
 wrangler deploy
 ```
 
-Then configure Cloudflare Email Routing to forward to this worker.
+### 3. Set up Email Routing (receiving)
 
-Secure the Worker API (optional but recommended):
+1. Cloudflare Dashboard → your domain → **Email** → **Email Routing** → Enable
+2. **Routing rules** → **Catch-all** → **Send to a Worker** → select your Worker
 
-```bash
-wrangler secret put AUTH_TOKEN    # set a secret token
-```
-
-Configure the CLI to use your Worker:
+### 4. Configure the CLI
 
 ```bash
-mails config set worker_url https://your-worker.example.com
-mails config set worker_token YOUR_AUTH_TOKEN    # same as above
+mails config set worker_url https://mails-worker.your-subdomain.workers.dev
+mails config set worker_token YOUR_AUTH_TOKEN
 mails config set mailbox agent@yourdomain.com
+mails config set default_from agent@yourdomain.com
 ```
 
-Now `mails inbox`, `mails code`, and `mails inbox --query` query your Worker directly. No local database needed.
+### 5. Verify
+
+```bash
+mails inbox                          # Should show empty inbox
+mails send --to test@gmail.com --subject "Test" --body "Self-hosted works"
+```
+
+All commands (`mails send`, `mails inbox`, `mails code`) now go through your Worker. No client-side Resend key needed — the Worker holds it as a secret.
+
+Worker secrets reference:
+
+| Secret | Required | Description |
+|--------|----------|-------------|
+| `AUTH_TOKEN` | Recommended | All `/api/*` endpoints require `Authorization: Bearer <token>` |
+| `RESEND_API_KEY` | For sending | Worker calls Resend API to send emails via `/api/send` |
 
 ## SDK (Programmatic Usage)
 
@@ -285,17 +310,27 @@ curl -H "Authorization: Bearer mk_YOUR_API_KEY" \
 ### Self-hosted endpoints (your Worker, optional AUTH_TOKEN)
 
 ```bash
+# Send email (via Worker's RESEND_API_KEY)
+curl -X POST -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  "https://your-worker.example.com/api/send" \
+  -d '{"to":["user@example.com"],"subject":"Hello","text":"World"}'
+
 # List inbox
 curl -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
   "https://your-worker.example.com/api/inbox?to=agent@yourdomain.com"
 
-# Search inbox
+# Search inbox (uses FTS5 full-text search)
 curl -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
   "https://your-worker.example.com/api/inbox?to=agent@yourdomain.com&query=invoice"
 
 # Wait for verification code
 curl -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
   "https://your-worker.example.com/api/code?to=agent@yourdomain.com&timeout=30"
+
+# Get current user info
+curl -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  "https://your-worker.example.com/api/me"
 ```
 
 ## Environment Variables

@@ -251,4 +251,37 @@ describe('SQLite provider', () => {
     expect(email!.headers).toEqual({ 'X-Custom': 'value' })
     expect(email!.metadata).toEqual({ source: 'test', count: 42 })
   })
+
+  test('saveEmail persists attachment rows and returns them in getEmail', async () => {
+    const provider = createSqliteProvider(TEST_DB)
+    await provider.init()
+
+    await provider.saveEmail(makeEmail({
+      id: 'with-attachment',
+      attachments: [
+        {
+          id: 'att-1',
+          email_id: 'with-attachment',
+          filename: 'report.txt',
+          content_type: 'text/plain',
+          size_bytes: 42,
+          content_disposition: 'attachment',
+          content_id: null,
+          mime_part_index: 0,
+          text_content: 'hello attachment',
+          text_extraction_status: 'done',
+          storage_key: null,
+          created_at: '2025-01-01T00:00:00Z',
+        },
+      ],
+    }))
+
+    const email = await provider.getEmail('with-attachment')
+    expect(email).not.toBeNull()
+    expect(email!.has_attachments).toBe(true)
+    expect(email!.attachment_count).toBe(1)
+    expect(email!.attachments).toHaveLength(1)
+    expect(email!.attachments?.[0]?.filename).toBe('report.txt')
+    expect(email!.attachments?.[0]?.downloadable).toBe(true)
+  })
 })

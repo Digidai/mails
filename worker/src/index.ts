@@ -1,18 +1,25 @@
 import { extractCode } from './extract-code'
 import { parseIncomingEmail } from './mime'
+import { attachmentContentToUint8Array } from './mime'
+import type { Env } from './types'
+import { resolveAuth } from './handlers/auth'
+import { handleInbox } from './handlers/inbox'
+import { handleGetCode } from './handlers/code'
+import { handleGetEmail, handleDeleteEmail } from './handlers/email'
+import { handleSend, parseFromName } from './handlers/send'
+import { handleGetAttachment } from './handlers/attachment'
+import { fireWebhook, getWebhookUrl } from './handlers/webhook'
 
-export interface Env {
-  DB: D1Database
-  /** Optional auth token. If set, all /api/* endpoints require Authorization: Bearer <token>. */
-  AUTH_TOKEN?: string
-}
+export type { Env } from './types'
+
+const R2_UPLOAD_THRESHOLD = 100_000 // 100KB
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url)
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     }
 
@@ -26,26 +33,60 @@ export default {
     if (url.pathname === '/health') {
       response = Response.json({ ok: true })
     } else if (url.pathname.startsWith('/api/')) {
-      // Check auth for /api/* if AUTH_TOKEN is configured
-      if (env.AUTH_TOKEN && !verifyToken(request, env.AUTH_TOKEN)) {
+      // Resolve auth — returns mailbox binding if auth_tokens is active
+      const auth = await resolveAuth(request, env)
+      if (auth === null) {
         response = Response.json({ error: 'Unauthorized' }, { status: 401 })
       } else {
-        switch (url.pathname) {
-          case '/api/inbox':
-            response = await handleInbox(url, env)
-            break
-          case '/api/code':
-            response = await handleGetCode(url, env)
-            break
-          case '/api/email':
-            response = await handleGetEmail(url, env)
-            break
-          default:
-            response = Response.json({ error: 'Not found' }, { status: 404 })
+        // When mailbox is known from token, use it; otherwise fall through to ?to= param
+        const mailbox = auth.mailbox ?? undefined
+
+        try {
+          switch (url.pathname) {
+            case '/api/inbox':
+              response = await handleInbox(url, env, mailbox)
+              break
+            case '/api/code':
+              response = await handleGetCode(url, env, mailbox)
+              break
+            case '/api/email':
+              if (request.method === 'DELETE') {
+                response = await handleDeleteEmail(url, env, mailbox)
+              } else {
+                response = await handleGetEmail(url, env, mailbox)
+              }
+              break
+            case '/api/send':
+              if (request.method !== 'POST') {
+                response = Response.json({ error: 'Method not allowed' }, { status: 405 })
+                break
+              }
+              response = await handleSend(request, env, mailbox)
+              break
+            case '/api/me':
+              response = Response.json({
+                worker: 'mails-worker',
+                mailbox: mailbox ?? null,
+                send: !!env.RESEND_API_KEY,
+              })
+              break
+            case '/api/attachment':
+              response = await handleGetAttachment(url, env, mailbox)
+              break
+            default:
+              response = Response.json({ error: 'Not found' }, { status: 404 })
+          }
+        } catch (err) {
+          console.error(`API error ${url.pathname}:`, err)
+          // Never expose internal error details to clients
+          response = Response.json(
+            { error: 'Internal server error' },
+            { status: 500 }
+          )
         }
       }
     } else {
-      response = Response.json({ name: 'mails-worker', version: '1.0.0' })
+      response = Response.json({ name: 'mails-worker' })
     }
 
     // Add CORS headers to all responses
@@ -55,230 +96,95 @@ export default {
     return response
   },
 
-  async email(message: ForwardableEmailMessage, env: Env): Promise<void> {
+  async email(message: ForwardableEmailMessage, env: Env, ctx: ExecutionContext): Promise<void> {
     const to = message.to
     const from = message.from
     const id = crypto.randomUUID()
     const now = new Date().toISOString()
-    const parsed = await parseIncomingEmail(await new Response(message.raw).arrayBuffer(), id, now)
-    const subject = parsed.subject || message.headers.get('subject') || ''
-    const code = extractCode(`${subject} ${parsed.bodyText}`)
-    const fromName = parseFromName(message.headers.get('from') ?? from)
-    const statements = [
-      env.DB.prepare(`
-        INSERT INTO emails (
-          id, mailbox, from_address, from_name, to_address, subject,
-          body_text, body_html, code, headers, metadata, message_id,
-          has_attachments, attachment_count, attachment_names, attachment_search_text,
-          raw_storage_key, direction, status, received_at, created_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'inbound', 'received', ?, ?)
-      `).bind(
-        id,
-        to,
-        from,
-        fromName,
-        to,
-        subject,
-        parsed.bodyText.slice(0, 50000),
-        parsed.bodyHtml.slice(0, 100000),
-        code,
-        JSON.stringify(parsed.headers),
-        JSON.stringify({}),
-        parsed.messageId,
-        parsed.attachmentCount > 0 ? 1 : 0,
-        parsed.attachmentCount,
-        parsed.attachmentNames,
-        parsed.attachmentSearchText,
-        null,
-        now,
-        now
-      ),
-      ...parsed.attachments.map((attachment) =>
-        env.DB.prepare(`
-          INSERT INTO attachments (
-            id, email_id, filename, content_type, size_bytes,
-            content_disposition, content_id, mime_part_index,
-            text_content, text_extraction_status, storage_key, created_at
-          )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).bind(
-          attachment.id,
-          attachment.email_id,
-          attachment.filename,
-          attachment.content_type,
-          attachment.size_bytes,
-          attachment.content_disposition,
-          attachment.content_id,
-          attachment.mime_part_index,
-          attachment.text_content,
-          attachment.text_extraction_status,
-          attachment.storage_key,
-          attachment.created_at
-        )
-      ),
-    ]
 
-    await env.DB.batch(statements)
+    try {
+      const parsed = await parseIncomingEmail(await new Response(message.raw).arrayBuffer(), id, now)
+      const subject = parsed.subject || message.headers.get('subject') || ''
+      const code = extractCode(`${subject} ${parsed.bodyText}`)
+      const fromName = parseFromName(message.headers.get('from') ?? from)
+
+      // Upload large attachments to R2
+      for (const att of parsed.attachments) {
+        if (att.raw_content && att.size_bytes && att.size_bytes > R2_UPLOAD_THRESHOLD && env.ATTACHMENTS) {
+          const key = `${id}/${att.id}`
+          try {
+            await env.ATTACHMENTS.put(key, attachmentContentToUint8Array(att.raw_content))
+            att.storage_key = key
+            att.downloadable = true
+            console.log(`R2 upload: ${key} (${att.size_bytes} bytes)`)
+          } catch (err) {
+            console.error(`R2 upload failed for ${key}:`, err)
+          }
+        }
+      }
+
+      const statements = [
+        env.DB.prepare(`
+          INSERT INTO emails (
+            id, mailbox, from_address, from_name, to_address, subject,
+            body_text, body_html, code, headers, metadata, message_id,
+            has_attachments, attachment_count, attachment_names, attachment_search_text,
+            raw_storage_key, direction, status, received_at, created_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'inbound', 'received', ?, ?)
+        `).bind(
+          id, to, from, fromName, to, subject,
+          parsed.bodyText.slice(0, 50000),
+          parsed.bodyHtml.slice(0, 100000),
+          code,
+          JSON.stringify(parsed.headers),
+          JSON.stringify({}),
+          parsed.messageId,
+          parsed.attachmentCount > 0 ? 1 : 0,
+          parsed.attachmentCount,
+          parsed.attachmentNames,
+          parsed.attachmentSearchText,
+          null, now, now
+        ),
+        ...parsed.attachments.map((attachment) =>
+          env.DB.prepare(`
+            INSERT INTO attachments (
+              id, email_id, filename, content_type, size_bytes,
+              content_disposition, content_id, mime_part_index,
+              text_content, text_extraction_status, storage_key, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).bind(
+            attachment.id, attachment.email_id, attachment.filename,
+            attachment.content_type, attachment.size_bytes,
+            attachment.content_disposition, attachment.content_id,
+            attachment.mime_part_index, attachment.text_content,
+            attachment.text_extraction_status, attachment.storage_key,
+            attachment.created_at
+          )
+        ),
+      ]
+
+      await env.DB.batch(statements)
+      console.log(`Email received id=${id} to=${to} from=${from} subject="${subject.slice(0, 50)}" attachments=${parsed.attachmentCount}`)
+
+      // Fire webhook (non-blocking via waitUntil)
+      const webhookUrl = await getWebhookUrl(env, to)
+      if (webhookUrl) {
+        ctx.waitUntil(fireWebhook(env, {
+          event: 'email.received',
+          email_id: id,
+          mailbox: to,
+          from,
+          subject,
+          received_at: now,
+          message_id: parsed.messageId,
+          has_attachments: parsed.attachmentCount > 0,
+          attachment_count: parsed.attachmentCount,
+        }, webhookUrl))
+      }
+    } catch (err) {
+      console.error(`Email processing failed for id=${id} to=${to} from=${from}:`, err)
+    }
   },
 } satisfies ExportedHandler<Env>
-
-// --- HTTP Handlers ---
-
-async function handleGetCode(url: URL, env: Env): Promise<Response> {
-  const to = url.searchParams.get('to')
-  if (!to) return Response.json({ error: 'Missing ?to= parameter' }, { status: 400 })
-
-  const timeoutSec = Math.min(parseInt(url.searchParams.get('timeout') ?? '30'), 55)
-  const since = url.searchParams.get('since')
-  const deadline = Date.now() + timeoutSec * 1000
-
-  while (Date.now() < deadline) {
-    let query = 'SELECT id, code, from_address, subject, received_at FROM emails WHERE mailbox = ? AND code IS NOT NULL'
-    const params: string[] = [to]
-
-    if (since) {
-      query += ' AND received_at > ?'
-      params.push(since)
-    }
-
-    query += ' ORDER BY received_at DESC LIMIT 1'
-
-    const row = await env.DB.prepare(query).bind(...params).first<{
-      id: string; code: string; from_address: string; subject: string; received_at: string
-    }>()
-
-    if (row) {
-      return Response.json({
-        id: row.id,
-        code: row.code,
-        from: row.from_address,
-        subject: row.subject,
-        received_at: row.received_at,
-      })
-    }
-
-    await new Promise(r => setTimeout(r, 2000))
-  }
-
-  return Response.json({ code: null })
-}
-
-async function handleInbox(url: URL, env: Env): Promise<Response> {
-  const to = url.searchParams.get('to')
-  if (!to) return Response.json({ error: 'Missing ?to= parameter' }, { status: 400 })
-
-  const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '20', 10) || 20, 100)
-  const offset = parseInt(url.searchParams.get('offset') ?? '0', 10) || 0
-  const direction = url.searchParams.get('direction')
-  const query = url.searchParams.get('query')?.trim()
-
-  let sql = `
-    SELECT id, mailbox, from_address, from_name, subject, code, direction, status,
-           received_at, has_attachments, attachment_count
-    FROM emails WHERE mailbox = ?`
-  const params: (string | number)[] = [to]
-
-  if (direction === 'inbound' || direction === 'outbound') {
-    sql += ' AND direction = ?'
-    params.push(direction)
-  }
-
-  if (query) {
-    const pattern = `%${query}%`
-    sql += ' AND (subject LIKE ? OR body_text LIKE ? OR from_address LIKE ? OR from_name LIKE ? OR code LIKE ?)'
-    params.push(pattern, pattern, pattern, pattern, pattern)
-  }
-
-  sql += ' ORDER BY received_at DESC LIMIT ? OFFSET ?'
-  params.push(limit, offset)
-
-  const rows = await env.DB.prepare(sql).bind(...params).all()
-
-  return Response.json({
-    emails: rows.results.map((row) => ({
-      ...row,
-      has_attachments: Boolean((row as { has_attachments?: number }).has_attachments),
-      attachment_count: (row as { attachment_count?: number }).attachment_count ?? 0,
-    })),
-  })
-}
-
-async function handleGetEmail(url: URL, env: Env): Promise<Response> {
-  const id = url.searchParams.get('id')
-  if (!id) return Response.json({ error: 'Missing ?id= parameter' }, { status: 400 })
-
-  const row = await env.DB.prepare('SELECT * FROM emails WHERE id = ?').bind(id).first<{
-    id: string
-    mailbox: string
-    from_address: string
-    from_name: string
-    to_address: string
-    subject: string
-    body_text: string
-    body_html: string
-    code: string | null
-    headers: string
-    metadata: string
-    direction: 'inbound' | 'outbound'
-    status: 'received' | 'sent' | 'failed' | 'queued'
-    message_id: string | null
-    has_attachments: number
-    attachment_count: number
-    attachment_names: string
-    attachment_search_text: string
-    raw_storage_key: string | null
-    received_at: string
-    created_at: string
-  }>()
-
-  if (!row) return Response.json({ error: 'Email not found' }, { status: 404 })
-
-  const attachments = await env.DB.prepare(
-    'SELECT * FROM attachments WHERE email_id = ? ORDER BY mime_part_index ASC'
-  ).bind(id).all<{
-    id: string
-    email_id: string
-    filename: string
-    content_type: string
-    size_bytes: number | null
-    content_disposition: string | null
-    content_id: string | null
-    mime_part_index: number
-    text_content: string
-    text_extraction_status: string
-    storage_key: string | null
-    created_at: string
-  }>()
-
-  return Response.json({
-    ...row,
-    headers: safeJsonParse(row.headers, {}),
-    metadata: safeJsonParse(row.metadata, {}),
-    has_attachments: Boolean(row.has_attachments),
-    attachment_count: row.attachment_count ?? 0,
-    attachments: attachments.results.map((attachment) => ({
-      ...attachment,
-      downloadable: Boolean(attachment.storage_key),
-    })),
-  })
-}
-
-function parseFromName(from: string): string {
-  const match = from.match(/^"?([^"<]+)"?\s*</)
-  return match ? match[1]!.trim() : ''
-}
-
-function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
-  if (!value) return fallback
-  try {
-    return JSON.parse(value) as T
-  } catch {
-    return fallback
-  }
-}
-
-function verifyToken(request: Request, token: string): boolean {
-  const auth = request.headers.get('Authorization')
-  return auth === `Bearer ${token}`
-}

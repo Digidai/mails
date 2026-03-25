@@ -6,3 +6,16 @@ compatibility_date = "2024-12-01"
 binding = "DB"
 database_name = "mails"
 database_id = "REPLACE_WITH_YOUR_DATABASE_ID"
+
+[[r2_buckets]]
+binding = "ATTACHMENTS"
+bucket_name = "mails-attachments"
+
+# Secrets (set via `wrangler secret put`):
+#   AUTH_TOKEN      - Legacy single API authentication token (no mailbox isolation)
+#   RESEND_API_KEY  - Resend API key for sending emails
+#   WEBHOOK_SECRET  - HMAC key for signing webhook payloads
+#
+# For mailbox isolation, use the auth_tokens D1 table instead of AUTH_TOKEN:
+#   INSERT INTO auth_tokens (token, mailbox) VALUES ('your-token', 'agent@example.com');
+#   INSERT INTO auth_tokens (token, mailbox, webhook_url) VALUES ('tok', 'agent@example.com', 'https://...');

@@ -9,6 +9,10 @@ const TEXT_ATTACHMENT_TYPES = new Set([
   'text/plain',
 ])
 
+export interface ParsedAttachment extends Attachment {
+  raw_content: PostalMimeAttachment['content']
+}
+
 export interface ParsedIncomingEmail {
   subject: string
   bodyText: string
@@ -18,7 +22,7 @@ export interface ParsedIncomingEmail {
   attachmentCount: number
   attachmentNames: string
   attachmentSearchText: string
-  attachments: Attachment[]
+  attachments: ParsedAttachment[]
 }
 
 export async function parseIncomingEmail(
@@ -53,7 +57,7 @@ function toAttachmentRecord(
   emailId: string,
   mimePartIndex: number,
   createdAt: string
-): Attachment {
+): ParsedAttachment {
   const filename = attachment.filename?.trim() || `attachment-${mimePartIndex + 1}`
   const sizeBytes = getAttachmentSize(attachment.content)
   const { text, status } = extractAttachmentText(attachment, sizeBytes)
@@ -72,6 +76,7 @@ function toAttachmentRecord(
     storage_key: null,
     downloadable: false,
     created_at: createdAt,
+    raw_content: attachment.content,
   }
 }
 
@@ -138,4 +143,16 @@ function getAttachmentSize(content: PostalMimeAttachment['content']): number | n
   }
 
   return null
+}
+
+export function attachmentContentToUint8Array(content: PostalMimeAttachment['content']): Uint8Array {
+  if (typeof content === 'string') {
+    return new TextEncoder().encode(content)
+  }
+
+  if (content instanceof Uint8Array) {
+    return content
+  }
+
+  return new Uint8Array(content)
 }

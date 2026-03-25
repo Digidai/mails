@@ -47,6 +47,8 @@ export function createRemoteProvider(options: RemoteProviderOptions): StoragePro
 
     async init() {},
 
+    async close() {},
+
     async saveEmail() {
       throw new Error('Remote provider is read-only. Emails are received by the Worker.')
     },
@@ -88,6 +90,22 @@ export function createRemoteProvider(options: RemoteProviderOptions): StoragePro
         throw new Error(`API error: ${data.error ?? res.statusText}`)
       }
       return await res.json() as Email
+    },
+
+    async deleteEmail(id) {
+      const endpoint = new URL(emailPath(), url)
+      endpoint.searchParams.set('id', id)
+      const headers: Record<string, string> = {}
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+      const res = await fetch(endpoint.toString(), { method: 'DELETE', headers })
+      if (res.status === 404) return false
+      if (!res.ok) {
+        const data = await res.json() as { error?: string }
+        throw new Error(`API error: ${data.error ?? res.statusText}`)
+      }
+      return true
     },
 
     async getCode(_mailbox, options) {

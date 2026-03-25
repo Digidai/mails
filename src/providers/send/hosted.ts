@@ -10,17 +10,22 @@ export function createHostedSendProvider(apiKey: string, apiUrl?: string): SendP
 
     async send(options): Promise<SendResult> {
       const body: Record<string, unknown> = {
+        from: options.from,
         to: options.to,
         subject: options.subject,
       }
       if (options.text) body.text = options.text
       if (options.html) body.html = options.html
       if (options.replyTo) body.reply_to = options.replyTo
+      if (options.headers && Object.keys(options.headers).length > 0) {
+        body.headers = options.headers
+      }
       if (options.attachments?.length) {
         body.attachments = options.attachments.map(a => ({
           filename: a.filename,
           content: a.content,
           ...(a.contentType ? { content_type: a.contentType } : {}),
+          ...(a.contentId ? { content_id: a.contentId } : {}),
         }))
       }
 
@@ -33,7 +38,7 @@ export function createHostedSendProvider(apiKey: string, apiUrl?: string): SendP
         body: JSON.stringify(body),
       })
 
-      const data = await res.json() as {
+      const data = await res.json().catch(() => ({})) as {
         id?: string
         from?: string
         sends_this_month?: number
@@ -56,7 +61,7 @@ export function createHostedSendProvider(apiKey: string, apiUrl?: string): SendP
         process.stderr.write(`  [${data.sends_this_month}/${data.monthly_limit} this month]\n`)
       }
 
-      return { id: data.id!, provider: 'mails.dev' }
+      return { id: data.id!, provider: 'mails.dev', provider_id: data.id }
     },
   }
 }

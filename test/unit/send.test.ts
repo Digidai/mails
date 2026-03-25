@@ -58,12 +58,12 @@ describe('send', () => {
     expect(sentFrom).toBe('Custom <custom@test.com>')
   })
 
-  test('throws when no resend_api_key', async () => {
+  test('throws when no provider configured (no resend_api_key)', async () => {
     saveConfig({ ...BASE_CONFIG, resend_api_key: undefined })
 
     expect(
       send({ to: 'a@b.com', subject: 'Test', text: 'hi' })
-    ).rejects.toThrow('resend_api_key not configured')
+    ).rejects.toThrow('No send provider configured')
   })
 
   test('throws when no from address', async () => {
@@ -141,11 +141,11 @@ describe('send', () => {
     expect(result.provider).toBe('mails.dev')
   })
 
-  test('throws resend_api_key error when explicitly set as provider without key', async () => {
+  test('throws when send_provider set but no credentials configured', async () => {
     saveConfig({ ...BASE_CONFIG, resend_api_key: undefined, api_key: undefined, send_provider: 'resend' })
 
     expect(
       send({ to: 'a@b.com', subject: 'Test', text: 'hi' })
-    ).rejects.toThrow('resend_api_key not configured')
+    ).rejects.toThrow('No send provider configured')
   })
 })

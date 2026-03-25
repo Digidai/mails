@@ -7,50 +7,23 @@ let counter = 0
 async function freshGetStorage() {
   const { loadConfig } = await import('../../src/core/config')
   const { createSqliteProvider } = await import('../../src/providers/storage/sqlite')
-  const { createDb9Provider } = await import('../../src/providers/storage/db9')
   const { createRemoteProvider } = await import('../../src/providers/storage/remote')
   const type = await import('../../src/core/types')
 
   let _provider: type.StorageProvider | null = null
   const config = loadConfig()
 
-  switch (config.storage_provider) {
-    case 'db9': {
-      if (!config.db9_token) throw new Error('db9_token not configured')
-      if (!config.db9_database_id) throw new Error('db9_database_id not configured')
-      _provider = createDb9Provider(config.db9_token, config.db9_database_id)
-      break
-    }
-    case 'remote': {
-      const mailbox = config.mailbox || ''
-      if (!mailbox) throw new Error('mailbox not configured')
-      _provider = createRemoteProvider({
-        url: config.worker_url || 'https://example.com',
-        mailbox,
-        apiKey: config.api_key,
-        token: config.api_key || config.worker_token,
-      })
-      break
-    }
-    case 'sqlite': {
-      _provider = createSqliteProvider()
-      break
-    }
-    default: {
-      if (config.api_key || config.worker_url) {
-        const mailbox = config.mailbox || ''
-        if (!mailbox) throw new Error('mailbox not configured')
-        _provider = createRemoteProvider({
-          url: config.worker_url || 'https://example.com',
-          mailbox,
-          apiKey: config.api_key,
-          token: config.api_key || config.worker_token,
-        })
-      } else {
-        _provider = createSqliteProvider()
-      }
-      break
-    }
+  if (config.api_key || config.worker_url || config.storage_provider === 'remote') {
+    const mailbox = config.mailbox || ''
+    if (!mailbox) throw new Error('mailbox not configured')
+    _provider = createRemoteProvider({
+      url: config.worker_url || 'https://example.com',
+      mailbox,
+      apiKey: config.api_key,
+      token: config.api_key || config.worker_token,
+    })
+  } else {
+    _provider = createSqliteProvider()
   }
 
   await _provider.init()
@@ -136,28 +109,4 @@ describe('storage resolver', () => {
     expect(freshGetStorage()).rejects.toThrow('mailbox not configured')
   })
 
-  test('throws for db9 without token', async () => {
-    saveConfig({
-      mode: 'hosted',
-      domain: 'mails.dev',
-      mailbox: '',
-      send_provider: 'resend',
-      storage_provider: 'db9',
-    } as MailsConfig)
-
-    expect(freshGetStorage()).rejects.toThrow('db9_token not configured')
-  })
-
-  test('throws for db9 without database_id', async () => {
-    saveConfig({
-      mode: 'hosted',
-      domain: 'mails.dev',
-      mailbox: '',
-      send_provider: 'resend',
-      storage_provider: 'db9',
-      db9_token: 'token',
-    } as MailsConfig)
-
-    expect(freshGetStorage()).rejects.toThrow('db9_database_id not configured')
-  })
 })

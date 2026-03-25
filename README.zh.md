@@ -34,7 +34,7 @@
                                   +--------------------------------------+
                                   |           存储 Provider               |
                                   |                                      |
-                                  |  D1 (Worker)  /  SQLite  /  db9.ai  |
+                                  |     D1 (Worker)  /  SQLite          |
                                   +--------------------------------------+
                                                        |
                                               通过 CLI/SDK 查询
@@ -53,7 +53,7 @@
 - **搜索收件箱** — 按关键词搜索主题、正文、发件人、验证码
 - **验证码自动提取** — 自动从邮件中提取验证码（支持中/英/日/韩）
 - **附件** — CLI `--attach` 或 SDK 发送，Worker 自动解析 MIME 附件
-- **存储 Provider** — 本地 SQLite、[db9.ai](https://db9.ai) 云端 PostgreSQL、或远程 Worker API
+- **存储 Provider** — 本地 SQLite（开发用）或远程 Worker API
 - **托管服务** — 通过 `mails claim` 免费获取 `@mails.dev` 邮箱
 - **自部署** — 部署自己的 Worker，支持可选的 AUTH_TOKEN 鉴权
 
@@ -120,31 +120,180 @@ const results = await searchInbox('agent@mails.dev', { query: '密码重置' })
 const code = await waitForCode('agent@mails.dev', { timeout: 30 })
 ```
 
-## Worker 自部署
+## 完整自部署指南
 
-部署后可选设置鉴权：`wrangler secret put AUTH_TOKEN`
+用你自己的域名 + Cloudflare + Resend 运行全套邮件系统，不依赖 mails.dev。
+
+### 前置条件
+
+| 需要什么 | 为什么 | 费用 |
+|---------|--------|------|
+| 一个域名（如 `example.com`） | 邮箱地址 `agent@example.com` | 已有 |
+| Cloudflare 账号 | DNS、Email Routing、Worker、D1 | 免费额度足够 |
+| Resend 账号 | SMTP 投递 | 免费 100 封/天 |
+
+### 第 1 步：域名接入 Cloudflare
+
+如果你的域名 DNS 还没托管在 Cloudflare，在 [dash.cloudflare.com](https://dash.cloudflare.com) 添加域名，然后到域名注册商修改 nameserver。
+
+### 第 2 步：配置 Resend 发件域名
+
+1. 注册 [Resend](https://resend.com) 账号
+2. 进入 **Domains** → **Add Domain** → 输入你的域名
+3. Resend 会给出需要添加的 DNS 记录，到 Cloudflare DNS 添加：
+   - **SPF** — `@` 上添加 `TXT` 记录：`v=spf1 include:amazonses.com ~all`
+   - **DKIM** — 按 Resend 给出的 3 条 `CNAME` 记录添加
+   - **DMARC** — `_dmarc` 上添加 `TXT` 记录：`v=DMARC1; p=none;`
+4. 等待 Resend 验证域名（通常几分钟，最长 48 小时）
+5. 复制 Resend API key（`re_...`）
+
+### 第 3 步：部署 Worker
+
+```bash
+cd worker
+bun install
+
+# 创建 D1 数据库
+wrangler d1 create mails
+# → 复制输出中的 database_id
+
+# 编辑 wrangler.toml — 粘贴你的 database_id
+# 把 REPLACE_WITH_YOUR_DATABASE_ID 替换为实际 ID
+
+# 初始化数据库表结构
+wrangler d1 execute mails --file=schema.sql
+
+# 设置密钥
+wrangler secret put AUTH_TOKEN         # 设置一个强随机 token
+wrangler secret put RESEND_API_KEY     # 粘贴 Resend 的 re_... key
+
+# 部署
+wrangler deploy
+# → 记下 Worker URL: https://mails-worker.<你的子域名>.workers.dev
+```
+
+### 第 4 步：配置 Cloudflare Email Routing（收件）
+
+1. 进入 [Cloudflare Dashboard](https://dash.cloudflare.com) → 你的域名 → **Email** → **Email Routing**
+2. 点击 **Enable Email Routing**（Cloudflare 会自动添加 MX 记录）
+3. 进入 **Routing rules** → **Catch-all address** → 选择 **Send to a Worker** → 选择你部署的 Worker
+4. 现在所有发送到 `*@example.com` 的邮件都会路由到你的 Worker
+
+### 第 5 步：（可选）创建 R2 存储桶用于大附件
+
+```bash
+wrangler r2 create mails-attachments
+```
+
+R2 绑定已在 `wrangler.toml` 中配置好，创建后重新部署即可：
+
+```bash
+wrangler deploy
+```
+
+### 第 6 步：配置 CLI 客户端
+
+```bash
+mails config set worker_url https://mails-worker.<你的子域名>.workers.dev
+mails config set worker_token YOUR_AUTH_TOKEN       # 第 3 步设置的同一个 token
+mails config set mailbox agent@example.com          # 你的邮箱地址
+mails config set default_from agent@example.com     # 默认发件人
+```
+
+### 第 7 步：验证
+
+```bash
+# 检查 Worker 是否可达
+curl https://mails-worker.<你的子域名>.workers.dev/health
+
+# 查看收件箱（应该为空）
+mails inbox
+
+# 发送测试邮件
+mails send --to 你的个人邮箱@gmail.com --subject "Test" --body "Hello from self-hosted mails"
+
+# 从任意邮箱发一封邮件到你的 agent@example.com，然后：
+mails inbox
+```
+
+### 部署后架构
+
+```
+你的 Agent                              外部发件人
+    |                                        |
+    |  mails send / mails inbox              |  发邮件到 agent@example.com
+    v                                        v
++--------+                         +-------------------+
+|  CLI   |------ /api/send ------->|  Cloudflare Email |
+|  /SDK  |<----- /api/inbox -------|     Routing       |
++--------+                         +-------------------+
+    |                                        |
+    v                                        v
++--------------------------------------------------+
+|              你的 Cloudflare Worker               |
+|  /api/send → Resend API → SMTP 投递              |
+|  /api/inbox, /api/code → D1 查询 (FTS5 全文搜索)  |
+|  email() handler → 解析 MIME → 存储到 D1          |
++--------------------------------------------------+
+    |               |
+    v               v
++--------+    +------------+
+|   D1   |    |     R2     |
+| 邮件    |    |   大附件    |
++--------+    +------------+
+```
+
+### Worker 密钥参考
+
+| 密钥 | 是否必须 | 说明 |
+|------|---------|------|
+| `AUTH_TOKEN` | 推荐 | API 鉴权 token。设置后所有 `/api/*` 端点需要 `Authorization: Bearer <token>` |
+| `RESEND_API_KEY` | 发送必须 | Resend API key（`re_...`）。Worker 通过它调用 Resend 发送邮件 |
+| `WEBHOOK_SECRET` | 可选 | HMAC-SHA256 签名密钥，用于 webhook 载荷签名（`X-Webhook-Signature` 头） |
+
+### Worker API 端点
 
 | 端点 | 说明 |
 |------|------|
-| `GET /api/inbox?to=<addr>&query=<text>` | 搜索邮件 |
-| `GET /api/code?to=<addr>&timeout=30` | 等待验证码 |
+| `POST /api/send` | 发送邮件（需要 `RESEND_API_KEY` 密钥） |
+| `GET /api/inbox?to=<addr>&limit=20` | 邮件列表 |
+| `GET /api/inbox?to=<addr>&query=<text>` | 搜索邮件（FTS5 全文检索） |
+| `GET /api/code?to=<addr>&timeout=30` | 长轮询等待验证码 |
 | `GET /api/email?id=<id>` | 邮件详情（含附件） |
+| `DELETE /api/email?id=<id>` | 删除邮件（含附件及 R2 对象） |
+| `GET /api/attachment?id=<id>` | 下载附件 |
+| `GET /api/me` | Worker 信息和能力 |
+| `GET /health` | 健康检查（无需鉴权） |
+
+### 发送优先级
+
+CLI/SDK 发送邮件时，按以下顺序检查配置：
+
+1. `worker_url` → 通过你的 Worker `/api/send` 发送（自部署推荐）
+2. `api_key` → 通过 mails.dev 托管服务发送
+3. `resend_api_key` → 直连 Resend API
+
+设置了 `worker_url` 后，客户端不需要 `resend_api_key` — Resend key 作为密钥存储在 Worker 侧。
 
 ## 配置项
 
-| 键 | 说明 |
-|---|------|
-| `mailbox` | 接收邮箱地址 |
-| `api_key` | mails.dev 托管服务 API key |
-| `worker_url` | 自部署 Worker URL |
-| `worker_token` | 自部署 Worker 鉴权 token |
-| `resend_api_key` | Resend API 密钥 |
-| `default_from` | 默认发件人地址 |
-| `storage_provider` | `sqlite`、`db9` 或 `remote`（自动检测） |
+| 键 | 设置方式 | 说明 |
+|---|---------|------|
+| `mailbox` | `mails claim` 或手动 | 接收邮箱地址 |
+| `api_key` | `mails claim` | mails.dev 托管服务 API key（mk_...） |
+| `worker_url` | 手动 | 自部署 Worker URL |
+| `worker_token` | 手动 | 自部署 Worker 鉴权 token |
+| `resend_api_key` | 手动 | Resend API key（设置 worker_url 后不需要） |
+| `default_from` | `mails claim` 或手动 | 默认发件人地址 |
+| `storage_provider` | 自动 | `sqlite` 或 `remote`（自动检测） |
 
 ## 测试
 
-125 个单元测试 + 42 个 E2E 测试
+```bash
+bun test              # 单元测试 + mock E2E
+bun test:coverage     # 含覆盖率报告
+bun test:live         # 真实 E2E（需要 .env 配置 Resend key）
+```
 
 ## 许可证
 

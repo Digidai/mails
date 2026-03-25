@@ -34,7 +34,7 @@ AIエージェント向けのメールインフラ。プログラムでメール
                                   +--------------------------------------+
                                   |         ストレージプロバイダー          |
                                   |                                      |
-                                  |  D1 (Worker)  /  SQLite  /  db9.ai  |
+                                  |     D1 (Worker)  /  SQLite          |
                                   +--------------------------------------+
                                                        |
                                               CLI/SDKで問い合わせ
@@ -53,7 +53,7 @@ AIエージェント向けのメールインフラ。プログラムでメール
 - **受信箱検索** — キーワードで件名、本文、送信者、認証コードを検索
 - **認証コード自動抽出** — メールから認証コードを自動検出（英/中/日/韓対応）
 - **添付ファイル** — CLI `--attach` またはSDKで送信、Workerが自動MIME解析
-- **ストレージプロバイダー** — ローカルSQLite、[db9.ai](https://db9.ai)クラウドPostgreSQL、またはリモートWorker API
+- **ストレージプロバイダー** — ローカルSQLite（開発用）またはリモートWorker API
 - **ホスティングサービス** — `mails claim` で無料 `@mails.dev` メールアドレス取得
 - **セルフホスト** — 独自Workerデプロイ、オプションのAUTH_TOKEN認証
 
@@ -129,6 +129,11 @@ const code = await waitForCode('agent@mails.dev', { timeout: 30 })
 | `GET /api/inbox?to=<addr>&query=<text>` | メール検索 |
 | `GET /api/code?to=<addr>&timeout=30` | 認証コード待機 |
 | `GET /api/email?id=<id>` | メール詳細（添付ファイル含む） |
+| `DELETE /api/email?id=<id>` | メール削除（添付ファイル・R2オブジェクト含む） |
+| `GET /api/attachment?id=<id>` | 添付ファイルダウンロード |
+| `POST /api/send` | メール送信（`RESEND_API_KEY`が必要） |
+| `GET /api/me` | Worker情報 |
+| `GET /health` | ヘルスチェック（認証不要） |
 
 ## 設定キー
 
@@ -140,7 +145,7 @@ const code = await waitForCode('agent@mails.dev', { timeout: 30 })
 | `worker_token` | セルフホストWorker認証トークン |
 | `resend_api_key` | Resend APIキー |
 | `default_from` | デフォルト送信者アドレス |
-| `storage_provider` | `sqlite`、`db9`、`remote`（自動検出） |
+| `storage_provider` | `sqlite`、`remote`（自動検出） |
 
 ## テスト
 
