@@ -12,7 +12,7 @@
 
 ## 为什么选择 mails？
 
-与只能发送的原始邮件 API 不同，mails 为你的 Agent 提供完整的邮件身份 — 发送、接收、搜索、提取验证码，一个包搞定。免费领取 `@mails.dev` 邮箱，30 秒上手；或在自己的域名上自部署。
+与只能发送的原始邮件 API 不同，mails 为你的 Agent 提供完整的邮件身份 — 发送、接收、搜索、提取验证码，一个包搞定。在你自己的域名上通过 Cloudflare 部署（免费额度足够），完全掌控，不依赖任何第三方服务。
 
 ## 特性
 
@@ -26,8 +26,7 @@
 - **删除 API** — 删除已处理邮件，级联清理附件和 R2 对象
 - **存储 Provider** — 本地 SQLite（开发用）或远程 Worker API（生产环境）
 - **零运行时依赖** — 所有 Provider 使用原生 `fetch()`
-- **托管服务** — 通过 `mails claim` 免费获取 `@mails.dev` 邮箱（每月 100 封免费发送）
-- **自部署** — 在 Cloudflare 部署你自己的 Worker（免费额度足够）
+- **自部署** — 在 Cloudflare 部署你自己的 Worker（免费额度足够），完全掌控数据
 
 ## 安装
 
@@ -41,26 +40,21 @@ npx mails-agent
 
 ## 快速开始
 
-### 托管模式 (mails.dev)
-
 ```bash
-mails claim myagent                  # 免费认领 myagent@mails.dev
-mails send --to user@example.com --subject "Hello" --body "World"  # 每月 100 封免费
-mails inbox                          # 查看收件箱
-mails inbox --query "密码"            # 搜索邮件
-mails code --to myagent@mails.dev    # 等待验证码
-```
+# 1. 部署你的 Worker（参见下方完整自部署指南）
+cd worker && wrangler deploy
 
-无需 Resend key — 托管用户每月 100 封免费发件。无限发送请配置自己的 key：`mails config set resend_api_key re_YOUR_KEY`
-
-### 自部署模式
-
-```bash
-cd worker && wrangler deploy         # 部署你自己的 Worker
+# 2. 配置 CLI
 mails config set worker_url https://your-worker.example.com
 mails config set worker_token YOUR_TOKEN
 mails config set mailbox agent@yourdomain.com
-mails inbox                          # 查询你的 Worker API
+mails config set default_from agent@yourdomain.com
+
+# 3. 开始使用
+mails send --to user@example.com --subject "Hello" --body "World"
+mails inbox                          # 查看收件箱
+mails inbox --query "密码"            # 搜索邮件
+mails code --to agent@yourdomain.com # 等待验证码
 ```
 
 ## 工作原理
@@ -70,45 +64,37 @@ mails inbox                          # 查询你的 Worker API
 
   Agent                                              外部发件人
     |                                                  |
-    |  mails send --to user@example.com                |  发送邮件到 agent@mails.dev
+    |  mails send --to user@example.com                |  发送邮件到 agent@yourdomain.com
     |                                                  |
     v                                                  v
-+--------+         +----------+              +-------------------+
-|  CLI   |-------->|  Resend  |---> SMTP --->| Cloudflare Email  |
-|  /SDK  |         |   API    |              |     Routing       |
-+--------+         +----------+              +-------------------+
++--------+                                   +-------------------+
+|  CLI   |------ /api/send ----------------->| Cloudflare Email  |
+|  /SDK  |<----- /api/inbox -----------------|     Routing       |
++--------+                                   +-------------------+
     |                                                  |
-    |  或 POST /v1/send（托管模式）                      |  email() handler
-    |                                                  v
-    v                                          +-------------+
-+-------------------+                          |   Worker    |
-| mails.dev 云服务   |                          | (自部署)     |
-| (每月 100 封免费)  |                          +-------------+
-+-------------------+                                  |
-                                                       |  存储
-                                                       v
-                                  +--------------------------------------+
-                                  |           存储 Provider               |
-                                  |                                      |
-                                  |     D1 (Worker)  /  SQLite          |
-                                  +--------------------------------------+
-                                                       |
-                                              通过 CLI/SDK 查询
-                                                       |
-                                                       v
-                                                    Agent
-                                              mails inbox
-                                              mails inbox --query "验证码"
-                                              mails code --to agent@mails.dev
+    v                                                  v
++--------------------------------------------------+
+|              你的 Cloudflare Worker               |
+|  /api/send → Resend API → SMTP 投递              |
+|  /api/inbox, /api/code → D1 查询 (FTS5 全文搜索)  |
+|  email() handler → 解析 MIME → 存储到 D1          |
++--------------------------------------------------+
+    |               |
+    v               v
++--------+    +------------+
+|   D1   |    |     R2     |
+| 邮件    |    |   大附件    |
++--------+    +------------+
+    |
+    |  通过 CLI/SDK 查询
+    v
+  Agent
+    mails inbox
+    mails inbox --query "验证码"
+    mails code --to agent@yourdomain.com
 ```
 
 ## CLI 参考
-
-### claim
-
-```bash
-mails claim <name>                   # 认领 name@mails.dev（每人最多 10 个）
-```
 
 ### send
 
@@ -167,10 +153,10 @@ await send({
 })
 
 // 收件箱列表
-const emails = await getInbox('agent@mails.dev', { limit: 10 })
+const emails = await getInbox('agent@yourdomain.com', { limit: 10 })
 
 // 搜索收件箱
-const results = await searchInbox('agent@mails.dev', {
+const results = await searchInbox('agent@yourdomain.com', {
   query: '密码重置',
   direction: 'inbound',
 })
@@ -182,14 +168,14 @@ const email = await getEmail('email-id')
 await deleteEmail('email-id')
 
 // 等待验证码
-const code = await waitForCode('agent@mails.dev', { timeout: 30 })
+const code = await waitForCode('agent@yourdomain.com', { timeout: 30 })
 if (code) console.log(code.code) // "123456"
 ```
 
 ## 存储 Provider
 
 CLI 自动检测存储 Provider：
-- 配置中有 `api_key` 或 `worker_url` → 远程（查询 Worker API）
+- 配置中有 `worker_url` → 远程（查询 Worker API）
 - 否则 → 本地 SQLite（`~/.mails/mails.db`）
 
 <details>
@@ -197,12 +183,11 @@ CLI 自动检测存储 Provider：
 
 | 键 | 设置方式 | 说明 |
 |---|---------|------|
-| `mailbox` | `mails claim` 或手动 | 接收邮箱地址 |
-| `api_key` | `mails claim` | mails.dev 托管服务 API key（mk_...） |
-| `worker_url` | 手动 | 自部署 Worker URL |
-| `worker_token` | 手动 | 自部署 Worker 鉴权 token |
+| `mailbox` | 手动 | 接收邮箱地址 |
+| `worker_url` | 手动 | Worker URL（启用远程 Provider） |
+| `worker_token` | 手动 | Worker 鉴权 token |
 | `resend_api_key` | 手动 | Resend API key（设置 worker_url 后不需要） |
-| `default_from` | `mails claim` 或手动 | 默认发件人地址 |
+| `default_from` | 手动 | 默认发件人地址 |
 | `storage_provider` | 自动 | `sqlite` 或 `remote`（自动检测） |
 
 </details>
@@ -210,7 +195,7 @@ CLI 自动检测存储 Provider：
 <details>
 <summary><strong>完整自部署指南</strong></summary>
 
-用你自己的域名 + Cloudflare + Resend 运行全套邮件系统，不依赖 mails.dev。
+用你自己的域名 + Cloudflare + Resend 运行全套邮件系统，完全掌控，不依赖任何第三方服务。
 
 ### 前置条件
 
@@ -357,9 +342,8 @@ mails inbox
 
 CLI/SDK 发送邮件时，按以下顺序检查配置：
 
-1. `worker_url` → 通过你的 Worker `/api/send` 发送（自部署推荐）
-2. `api_key` → 通过 mails.dev 托管服务发送
-3. `resend_api_key` → 直连 Resend API
+1. `worker_url` → 通过你的 Worker `/api/send` 发送（推荐）
+2. `resend_api_key` → 直连 Resend API
 
 设置了 `worker_url` 后，客户端不需要 `resend_api_key` — Resend key 作为密钥存储在 Worker 侧。
 

@@ -12,7 +12,7 @@ Email infrastructure for AI agents. Send, receive, search, and extract verificat
 
 ## Why mails?
 
-Unlike raw email APIs that only send, mails gives your agent a complete email identity — send, receive, search, and extract verification codes in one package. Claim a free `@mails.dev` mailbox and start in 30 seconds, or self-host on your own domain.
+Unlike raw email APIs that only send, mails gives your agent a complete email identity — send, receive, search, and extract verification codes in one package. Deploy on your own domain with Cloudflare (free tier). Full control, no third-party dependency.
 
 ## Features
 
@@ -26,8 +26,7 @@ Unlike raw email APIs that only send, mails gives your agent a complete email id
 - **Delete API** — remove processed emails with cascade cleanup (attachments + R2)
 - **Storage providers** — local SQLite (dev) or remote Worker API (production)
 - **Zero runtime dependencies** — all providers use raw `fetch()`
-- **Hosted service** — free `@mails.dev` mailboxes via `mails claim` (100 sends/month)
-- **Self-hosted** — deploy your own Worker on Cloudflare (free tier)
+- **Self-hosted** — deploy your own Worker on Cloudflare (free tier), full control over your data
 
 ## Install
 
@@ -41,26 +40,21 @@ npx mails-agent
 
 ## Quick Start
 
-### Hosted (mails.dev)
-
 ```bash
-mails claim myagent                  # Claim myagent@mails.dev (free)
-mails send --to user@example.com --subject "Hello" --body "World"  # 100 free/month
-mails inbox                          # List received emails
-mails inbox --query "password"       # Search emails
-mails code --to myagent@mails.dev    # Wait for verification code
-```
+# 1. Deploy your Worker (see Self-Hosted Deployment guide below)
+cd worker && wrangler deploy
 
-No Resend key needed — hosted users get 100 free sends/month. For unlimited sending, set your own key: `mails config set resend_api_key re_YOUR_KEY`
-
-### Self-Hosted
-
-```bash
-cd worker && wrangler deploy         # Deploy your own Worker
+# 2. Configure the CLI
 mails config set worker_url https://your-worker.example.com
 mails config set worker_token YOUR_TOKEN
 mails config set mailbox agent@yourdomain.com
-mails inbox                          # Queries your Worker API
+mails config set default_from agent@yourdomain.com
+
+# 3. Use it
+mails send --to user@example.com --subject "Hello" --body "World"
+mails inbox                          # List received emails
+mails inbox --query "password"       # Search emails
+mails code --to agent@yourdomain.com # Wait for verification code
 ```
 
 ## How it works
@@ -70,45 +64,37 @@ mails inbox                          # Queries your Worker API
 
   Agent                                              External
     |                                                  |
-    |  mails send --to user@example.com                |  email to agent@mails.dev
+    |  mails send --to user@example.com                |  email to agent@yourdomain.com
     |                                                  |
     v                                                  v
-+--------+         +----------+              +-------------------+
-|  CLI   |-------->|  Resend  |---> SMTP --->| Cloudflare Email  |
-|  /SDK  |         |   API    |              |     Routing       |
-+--------+         +----------+              +-------------------+
++--------+                                   +-------------------+
+|  CLI   |------ /api/send ----------------->| Cloudflare Email  |
+|  /SDK  |<----- /api/inbox -----------------|     Routing       |
++--------+                                   +-------------------+
     |                                                  |
-    |  or POST /v1/send (hosted)                       |  email() handler
-    |                                                  v
-    v                                          +-------------+
-+-------------------+                          |   Worker    |
-| mails.dev Cloud   |                          | (your own)  |
-| (100 free/month)  |                          +-------------+
-+-------------------+                                  |
-                                                       |  store
-                                                       v
-                                  +--------------------------------------+
-                                  |           Storage Provider           |
-                                  |                                      |
-                                  |     D1 (Worker)  /  SQLite          |
-                                  +--------------------------------------+
-                                                       |
-                                              query via CLI/SDK
-                                                       |
-                                                       v
-                                                    Agent
-                                              mails inbox
-                                              mails inbox --query "code"
-                                              mails code --to agent@mails.dev
+    v                                                  v
++--------------------------------------------------+
+|              Your Cloudflare Worker               |
+|  /api/send → Resend API → SMTP delivery          |
+|  /api/inbox, /api/code → D1 query (FTS5 search)  |
+|  email() handler → parse MIME → store in D1       |
++--------------------------------------------------+
+    |               |
+    v               v
++--------+    +------------+
+|   D1   |    |     R2     |
+| emails |    | attachments|
++--------+    +------------+
+    |
+    |  query via CLI/SDK
+    v
+  Agent
+    mails inbox
+    mails inbox --query "code"
+    mails code --to agent@yourdomain.com
 ```
 
 ## CLI Reference
-
-### claim
-
-```bash
-mails claim <name>                   # Claim name@mails.dev (max 10 per user)
-```
 
 ### send
 
@@ -167,10 +153,10 @@ await send({
 })
 
 // List inbox
-const emails = await getInbox('agent@mails.dev', { limit: 10 })
+const emails = await getInbox('agent@yourdomain.com', { limit: 10 })
 
 // Search inbox
-const results = await searchInbox('agent@mails.dev', {
+const results = await searchInbox('agent@yourdomain.com', {
   query: 'password reset',
   direction: 'inbound',
 })
@@ -182,14 +168,14 @@ const email = await getEmail('email-id')
 await deleteEmail('email-id')
 
 // Wait for verification code
-const code = await waitForCode('agent@mails.dev', { timeout: 30 })
+const code = await waitForCode('agent@yourdomain.com', { timeout: 30 })
 if (code) console.log(code.code) // "123456"
 ```
 
 ## Storage Providers
 
 The CLI auto-detects the storage provider:
-- `api_key` or `worker_url` in config → remote (queries Worker API)
+- `worker_url` in config → remote (queries Worker API)
 - Otherwise → local SQLite (`~/.mails/mails.db`)
 
 <details>
@@ -197,12 +183,11 @@ The CLI auto-detects the storage provider:
 
 | Key | Set by | Description |
 |-----|--------|-------------|
-| `mailbox` | `mails claim` or manual | Your receiving address |
-| `api_key` | `mails claim` | API key for mails.dev hosted service (mk_...) |
-| `worker_url` | manual | Self-hosted Worker URL |
-| `worker_token` | manual | Auth token for self-hosted Worker |
+| `mailbox` | manual | Your receiving address |
+| `worker_url` | manual | Worker URL (enables remote provider) |
+| `worker_token` | manual | Auth token for Worker |
 | `resend_api_key` | manual | Resend API key (not needed when worker_url is set) |
-| `default_from` | `mails claim` or manual | Default sender address |
+| `default_from` | manual | Default sender address |
 | `storage_provider` | auto | `sqlite` or `remote` (auto-detected) |
 
 </details>
@@ -210,7 +195,7 @@ The CLI auto-detects the storage provider:
 <details>
 <summary><strong>Self-Hosted Deployment (Full Guide)</strong></summary>
 
-Run the entire email system on your own domain using Cloudflare + Resend. No dependency on mails.dev.
+Run the entire email system on your own domain using Cloudflare + Resend. Full control, no third-party dependency.
 
 ### Prerequisites
 
@@ -357,9 +342,8 @@ Your Agent                              External sender
 
 When the CLI/SDK sends an email, it checks config in this order:
 
-1. `worker_url` → sends via your Worker's `/api/send` (recommended for self-hosted)
-2. `api_key` → sends via mails.dev hosted service
-3. `resend_api_key` → sends directly to Resend API
+1. `worker_url` → sends via your Worker's `/api/send` (recommended)
+2. `resend_api_key` → sends directly to Resend API
 
 Once `worker_url` is set, you don't need `resend_api_key` on the client — the Worker holds the Resend key as a secret.
 

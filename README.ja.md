@@ -12,7 +12,7 @@ AIエージェント向けのメールインフラ。送信、受信、検索、
 
 ## なぜ mails？
 
-メール送信のみの生のAPIとは異なり、mails はエージェントに完全なメールアイデンティティを提供します — 送信、受信、検索、認証コード抽出をワンパッケージで。無料の `@mails.dev` メールアドレスを取得して30秒で開始、または独自ドメインでセルフホスト。
+メール送信のみの生のAPIとは異なり、mails はエージェントに完全なメールアイデンティティを提供します — 送信、受信、検索、認証コード抽出をワンパッケージで。Cloudflare（無料枠）で独自ドメインにデプロイ。完全なコントロール、サードパーティへの依存なし。
 
 ## 特徴
 
@@ -26,8 +26,7 @@ AIエージェント向けのメールインフラ。送信、受信、検索、
 - **削除API** — 処理済みメールの削除、添付ファイルとR2オブジェクトのカスケード削除
 - **ストレージプロバイダー** — ローカルSQLite（開発用）またはリモートWorker API（本番）
 - **ランタイム依存関係ゼロ** — すべてのプロバイダーがネイティブ `fetch()` を使用
-- **ホスティングサービス** — `mails claim` で無料 `@mails.dev` メールアドレス取得（月100通無料送信）
-- **セルフホスト** — Cloudflareに独自Workerをデプロイ（無料枠で十分）
+- **セルフホスト** — Cloudflareに独自Workerをデプロイ（無料枠で十分）、データを完全にコントロール
 
 ## インストール
 
@@ -41,26 +40,21 @@ npx mails-agent
 
 ## クイックスタート
 
-### ホスティングモード (mails.dev)
-
 ```bash
-mails claim myagent                  # myagent@mails.dev を無料で取得
-mails send --to user@example.com --subject "Hello" --body "World"  # 月100通無料
-mails inbox                          # 受信箱を確認
-mails inbox --query "パスワード"       # メール検索
-mails code --to myagent@mails.dev    # 認証コードを待機
-```
+# 1. Workerをデプロイ（下記のセルフホスト完全ガイドを参照）
+cd worker && wrangler deploy
 
-Resendキー不要 — ホスティングユーザーは月100通無料。無制限送信は自分のキーを設定：`mails config set resend_api_key re_YOUR_KEY`
-
-### セルフホストモード
-
-```bash
-cd worker && wrangler deploy         # 独自Workerをデプロイ
+# 2. CLIを設定
 mails config set worker_url https://your-worker.example.com
 mails config set worker_token YOUR_TOKEN
 mails config set mailbox agent@yourdomain.com
-mails inbox                          # Worker APIに問い合わせ
+mails config set default_from agent@yourdomain.com
+
+# 3. 使用開始
+mails send --to user@example.com --subject "Hello" --body "World"
+mails inbox                          # 受信箱を確認
+mails inbox --query "パスワード"       # メール検索
+mails code --to agent@yourdomain.com # 認証コードを待機
 ```
 
 ## 仕組み
@@ -70,45 +64,37 @@ mails inbox                          # Worker APIに問い合わせ
 
   Agent                                              外部送信者
     |                                                  |
-    |  mails send --to user@example.com                |  agent@mails.dev にメール送信
+    |  mails send --to user@example.com                |  agent@yourdomain.com にメール送信
     |                                                  |
     v                                                  v
-+--------+         +----------+              +-------------------+
-|  CLI   |-------->|  Resend  |---> SMTP --->| Cloudflare Email  |
-|  /SDK  |         |   API    |              |     Routing       |
-+--------+         +----------+              +-------------------+
++--------+                                   +-------------------+
+|  CLI   |------ /api/send ----------------->| Cloudflare Email  |
+|  /SDK  |<----- /api/inbox -----------------|     Routing       |
++--------+                                   +-------------------+
     |                                                  |
-    |  または POST /v1/send（ホスティング）               |  email() handler
-    |                                                  v
-    v                                          +-------------+
-+-------------------+                          |   Worker    |
-| mails.dev クラウド |                          | (セルフホスト)|
-| (月100通無料)      |                          +-------------+
-+-------------------+                                  |
-                                                       |  保存
-                                                       v
-                                  +--------------------------------------+
-                                  |         ストレージプロバイダー          |
-                                  |                                      |
-                                  |     D1 (Worker)  /  SQLite          |
-                                  +--------------------------------------+
-                                                       |
-                                              CLI/SDKで問い合わせ
-                                                       |
-                                                       v
-                                                    Agent
-                                              mails inbox
-                                              mails inbox --query "コード"
-                                              mails code --to agent@mails.dev
+    v                                                  v
++--------------------------------------------------+
+|           あなたのCloudflare Worker               |
+|  /api/send → Resend API → SMTP配信               |
+|  /api/inbox, /api/code → D1クエリ (FTS5全文検索)  |
+|  email() handler → MIME解析 → D1に保存            |
++--------------------------------------------------+
+    |               |
+    v               v
++--------+    +------------+
+|   D1   |    |     R2     |
+| メール  |    |  添付ファイル|
++--------+    +------------+
+    |
+    |  CLI/SDKで問い合わせ
+    v
+  Agent
+    mails inbox
+    mails inbox --query "コード"
+    mails code --to agent@yourdomain.com
 ```
 
 ## CLIリファレンス
-
-### claim
-
-```bash
-mails claim <name>                   # name@mails.dev を取得（ユーザーあたり最大10個）
-```
 
 ### send
 
@@ -167,10 +153,10 @@ await send({
 })
 
 // 受信箱一覧
-const emails = await getInbox('agent@mails.dev', { limit: 10 })
+const emails = await getInbox('agent@yourdomain.com', { limit: 10 })
 
 // 受信箱検索
-const results = await searchInbox('agent@mails.dev', {
+const results = await searchInbox('agent@yourdomain.com', {
   query: 'パスワードリセット',
   direction: 'inbound',
 })
@@ -182,14 +168,14 @@ const email = await getEmail('email-id')
 await deleteEmail('email-id')
 
 // 認証コード待機
-const code = await waitForCode('agent@mails.dev', { timeout: 30 })
+const code = await waitForCode('agent@yourdomain.com', { timeout: 30 })
 if (code) console.log(code.code) // "123456"
 ```
 
 ## ストレージプロバイダー
 
 CLIはストレージプロバイダーを自動検出：
-- 設定に `api_key` または `worker_url` がある → リモート（Worker APIに問い合わせ）
+- 設定に `worker_url` がある → リモート（Worker APIに問い合わせ）
 - それ以外 → ローカルSQLite（`~/.mails/mails.db`）
 
 <details>
@@ -197,12 +183,11 @@ CLIはストレージプロバイダーを自動検出：
 
 | キー | 設定方法 | 説明 |
 |-----|---------|------|
-| `mailbox` | `mails claim` または手動 | 受信メールアドレス |
-| `api_key` | `mails claim` | mails.devホスティングサービスAPIキー（mk_...） |
-| `worker_url` | 手動 | セルフホストWorker URL |
-| `worker_token` | 手動 | セルフホストWorker認証トークン |
+| `mailbox` | 手動 | 受信メールアドレス |
+| `worker_url` | 手動 | Worker URL（リモートプロバイダーを有効化） |
+| `worker_token` | 手動 | Worker認証トークン |
 | `resend_api_key` | 手動 | Resend APIキー（worker_url設定時は不要） |
-| `default_from` | `mails claim` または手動 | デフォルト送信者アドレス |
+| `default_from` | 手動 | デフォルト送信者アドレス |
 | `storage_provider` | 自動 | `sqlite` または `remote`（自動検出） |
 
 </details>
@@ -210,7 +195,7 @@ CLIはストレージプロバイダーを自動検出：
 <details>
 <summary><strong>セルフホスト完全ガイド</strong></summary>
 
-自分のドメイン + Cloudflare + Resend でメールシステム全体を運用。mails.devに依存しません。
+自分のドメイン + Cloudflare + Resend でメールシステム全体を運用。完全なコントロール、サードパーティへの依存なし。
 
 ### 前提条件
 
@@ -357,9 +342,8 @@ mails inbox
 
 CLI/SDKがメールを送信する際、以下の順序で設定を確認：
 
-1. `worker_url` → Worker `/api/send` 経由で送信（セルフホスト推奨）
-2. `api_key` → mails.devホスティングサービス経由
-3. `resend_api_key` → Resend APIに直接送信
+1. `worker_url` → Worker `/api/send` 経由で送信（推奨）
+2. `resend_api_key` → Resend APIに直接送信
 
 `worker_url` を設定すれば、クライアント側に `resend_api_key` は不要 — ResendキーはWorker側にシークレットとして保存されます。
 
