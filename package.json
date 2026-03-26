@@ -37,9 +37,15 @@
     "mail",
     "agent",
     "ai",
+    "ai-agent",
+    "llm",
     "resend",
     "cloudflare",
-    "cli"
+    "cloudflare-workers",
+    "cli",
+    "verification-code",
+    "webhook",
+    "sdk"
   ],
   "repository": {
     "type": "git",

@@ -4,8 +4,11 @@ Email infrastructure for AI agents. Send and receive emails programmatically.
 
 [![npm](https://img.shields.io/npm/v/mails)](https://www.npmjs.com/package/mails)
 [![license](https://img.shields.io/npm/l/mails)](https://github.com/chekusu/mails/blob/main/LICENSE)
+[![downloads](https://img.shields.io/npm/dm/mails)](https://www.npmjs.com/package/mails)
 
 [日本語](https://github.com/chekusu/mails/blob/main/README.ja.md) | [中文](https://github.com/chekusu/mails/blob/main/README.zh.md)
+
+> **Agent Integration:** Use [mails-skills](https://github.com/Digidai/mails-skills) to give your Claude Code, OpenClaw, or any AI agent email capabilities with one command.
 
 ## How it works
 
@@ -48,15 +51,18 @@ Email infrastructure for AI agents. Send and receive emails programmatically.
 
 ## Features
 
-- **Send emails** via Resend with attachment support
-- **Receive emails** via Cloudflare Email Routing Worker
-- **Search inbox** — keyword search across subject, body, sender, code
-- **Verification code extraction** — auto-extracts codes from emails (EN/ZH/JA/KO)
-- **Attachments** — send files via CLI (`--attach`) or SDK, receive and parse MIME attachments
-- **Storage providers** — local SQLite (for dev) or remote Worker API
-- **Zero runtime dependencies** — Resend provider uses raw `fetch()`
-- **Hosted service** — free `@mails.dev` mailboxes via `mails claim`
-- **Self-hosted** — deploy your own Worker with optional AUTH_TOKEN
+- **Send emails** — via Resend with attachment support
+- **Receive emails** — via Cloudflare Email Routing → Worker → D1
+- **Search inbox** — FTS5 full-text search across subject, body, sender, code
+- **Verification code extraction** — auto-extracts 4-8 char codes (EN/ZH/JA/KO)
+- **Attachments** — send via CLI (`--attach`) or SDK; receive with R2 storage for large files
+- **Webhook notifications** — POST to your URL on email receive, with HMAC-SHA256 signature
+- **Mailbox isolation** — per-token mailbox binding via `auth_tokens` D1 table
+- **Delete API** — remove processed emails with cascade cleanup (attachments + R2)
+- **Storage providers** — local SQLite (dev) or remote Worker API (production)
+- **Zero runtime dependencies** — all providers use raw `fetch()`
+- **Hosted service** — free `@mails.dev` mailboxes via `mails claim` (100 sends/month)
+- **Self-hosted** — deploy your own Worker on Cloudflare (free tier)
 
 ## Install
 
@@ -351,7 +357,15 @@ bun test:coverage     # With coverage report
 bun test:live         # Live E2E with real Resend + Cloudflare (requires .env)
 ```
 
-125 unit tests + 42 E2E tests across 6 test suites.
+187 tests across 20 test files.
+
+## Agent Integration
+
+Want your AI agent (Claude Code, OpenClaw, Cursor, etc.) to use this email system? See **[mails-skills](https://github.com/Digidai/mails-skills)** — install a skill file and your agent gets email capabilities.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, project structure, and PR guidelines.
 
 ## License
 
