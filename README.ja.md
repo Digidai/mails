@@ -1,12 +1,12 @@
-# mails
+# mails-agent
 
-AIエージェント向けのメールインフラ。プログラムでメールの送受信ができます。
+AIエージェント向けのメールインフラ。送信、受信、検索、認証コード抽出。
 
-[![npm](https://img.shields.io/npm/v/mails)](https://www.npmjs.com/package/mails)
-[![license](https://img.shields.io/npm/l/mails)](https://github.com/chekusu/mails/blob/main/LICENSE)
-[![downloads](https://img.shields.io/npm/dm/mails)](https://www.npmjs.com/package/mails)
+[![npm](https://img.shields.io/npm/v/mails-agent)](https://www.npmjs.com/package/mails-agent)
+[![license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/Digidai/mails/blob/main/LICENSE)
+[![downloads](https://img.shields.io/npm/dm/mails-agent)](https://www.npmjs.com/package/mails-agent)
 
-[English](https://github.com/chekusu/mails/blob/main/README.md) | [中文](https://github.com/chekusu/mails/blob/main/README.zh.md)
+[English](README.md) | [中文](README.zh.md)
 
 > **Agent連携：** [mails-skills](https://github.com/Digidai/mails-skills) を使えば、Claude Code、OpenClaw、その他のAIエージェントにワンコマンドでメール機能を追加できます。
 
@@ -32,11 +32,11 @@ AIエージェント向けのメールインフラ。プログラムでメール
 ## インストール
 
 ```bash
-npm install -g mails
+npm install -g mails-agent
 # または
-bun install -g mails
+bun install -g mails-agent
 # または直接実行
-npx mails
+npx mails-agent
 ```
 
 ## クイックスタート
@@ -409,6 +409,10 @@ git clone https://github.com/Digidai/mails-skills && cd mails-skills && ./instal
 
 開発環境のセットアップ、プロジェクト構造、PRガイドラインについては [CONTRIBUTING.md](CONTRIBUTING.md) をご覧ください。
 
+## 謝辞
+
+このプロジェクトは [turing](https://github.com/guo-yu) 氏の [mails](https://github.com/chekusu/mails) をベースに開発されています。メールボックス分離、Webhook通知、削除API、R2添付ファイルストレージ、Workerファイルリファクタリング、包括的なテストカバレッジ（187テスト）を追加しました。優れた基盤を築いてくれたオリジナル作者に感謝します。
+
 ## ライセンス
 
-MIT
+MIT — 詳細は [LICENSE](LICENSE) を参照。MITの条件に従い、オリジナルの著作権表示を保持しています。

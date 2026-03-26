@@ -1,12 +1,12 @@
-# mails
+# mails-agent
 
-Email infrastructure for AI agents. Send and receive emails programmatically.
+Email infrastructure for AI agents. Send, receive, search, and extract verification codes.
 
-[![npm](https://img.shields.io/npm/v/mails)](https://www.npmjs.com/package/mails)
-[![license](https://img.shields.io/npm/l/mails)](https://github.com/chekusu/mails/blob/main/LICENSE)
-[![downloads](https://img.shields.io/npm/dm/mails)](https://www.npmjs.com/package/mails)
+[![npm](https://img.shields.io/npm/v/mails-agent)](https://www.npmjs.com/package/mails-agent)
+[![license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/Digidai/mails/blob/main/LICENSE)
+[![downloads](https://img.shields.io/npm/dm/mails-agent)](https://www.npmjs.com/package/mails-agent)
 
-[日本語](https://github.com/chekusu/mails/blob/main/README.ja.md) | [中文](https://github.com/chekusu/mails/blob/main/README.zh.md)
+[日本語](README.ja.md) | [中文](README.zh.md)
 
 > **Agent Integration:** Use [mails-skills](https://github.com/Digidai/mails-skills) to give your Claude Code, OpenClaw, or any AI agent email capabilities with one command.
 
@@ -32,7 +32,7 @@ Unlike raw email APIs that only send, mails gives your agent a complete email id
 ## Install
 
 ```bash
-npm install -g mails
+npm install -g mails-agent
 # or
 bun install -g mails
 # or use directly
@@ -388,7 +388,8 @@ bun test:live         # Live E2E with real Resend + Cloudflare (requires .env)
 │  │  mails CLI   │    │  mails Worker    │    │   mails   │  │
 │  │  & SDK       │───▶│  (Cloudflare)    │◀───│  -skills  │  │
 │  │              │    │                  │    │           │  │
-│  │  npm i mails │    │  Receive + Send  │    │  Agent    │  │
+│  │ npm i mails- │    │  Receive + Send  │    │  Agent    │  │
+│  │    agent     │    │                  │    │           │  │
 │  │              │    │  + Search + Code │    │  Skills   │  │
 │  └──────────────┘    └──────────────────┘    └───────────┘  │
 │    Human / Script        Infrastructure        AI Agents    │
@@ -409,6 +410,10 @@ git clone https://github.com/Digidai/mails-skills && cd mails-skills && ./instal
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, project structure, and PR guidelines.
 
+## Acknowledgments
+
+This project is based on [mails](https://github.com/chekusu/mails) by [turing](https://github.com/guo-yu), originally created as email infrastructure for AI agents. We forked and extended it with mailbox isolation, webhook notifications, delete API, R2 attachment storage, Worker file refactoring, and comprehensive test coverage (187 tests). Thank you to the original author for the excellent foundation.
+
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE) for details. Original copyright retained per MIT terms.

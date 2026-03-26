@@ -1,12 +1,12 @@
-# mails
+# mails-agent
 
-面向 AI Agent 的邮件基础设施。通过编程方式收发邮件。
+面向 AI Agent 的邮件基础设施。发送、接收、搜索邮件，自动提取验证码。
 
-[![npm](https://img.shields.io/npm/v/mails)](https://www.npmjs.com/package/mails)
-[![license](https://img.shields.io/npm/l/mails)](https://github.com/chekusu/mails/blob/main/LICENSE)
-[![downloads](https://img.shields.io/npm/dm/mails)](https://www.npmjs.com/package/mails)
+[![npm](https://img.shields.io/npm/v/mails-agent)](https://www.npmjs.com/package/mails-agent)
+[![license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/Digidai/mails/blob/main/LICENSE)
+[![downloads](https://img.shields.io/npm/dm/mails-agent)](https://www.npmjs.com/package/mails-agent)
 
-[English](https://github.com/chekusu/mails/blob/main/README.md) | [日本語](https://github.com/chekusu/mails/blob/main/README.ja.md)
+[English](README.md) | [日本語](README.ja.md)
 
 > **Agent 集成：** 使用 [mails-skills](https://github.com/Digidai/mails-skills) 一行命令为你的 Claude Code、OpenClaw 或任何 AI agent 添加邮件能力。
 
@@ -32,11 +32,11 @@
 ## 安装
 
 ```bash
-npm install -g mails
+npm install -g mails-agent
 # 或
-bun install -g mails
+bun install -g mails-agent
 # 或直接使用
-npx mails
+npx mails-agent
 ```
 
 ## 快速开始
@@ -409,6 +409,10 @@ git clone https://github.com/Digidai/mails-skills && cd mails-skills && ./instal
 
 请阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 了解开发环境搭建、项目结构和 PR 规范。
 
+## 致谢
+
+本项目基于 [mails](https://github.com/chekusu/mails)（作者 [turing](https://github.com/guo-yu)）开发。我们在此基础上新增了 mailbox 隔离、webhook 通知、删除 API、R2 附件存储、Worker 文件重构和全面的测试覆盖（187 个测试）。感谢原作者奠定的优秀基础。
+
 ## 许可证
 
-MIT
+MIT — 详见 [LICENSE](LICENSE)。已按 MIT 条款保留原始版权声明。
