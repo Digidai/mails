@@ -22,23 +22,19 @@ mails claim <pick-a-name>
 
 **If you have a browser** (local machine): it will open automatically. The human approves, and the CLI receives the API key.
 
-**If you don't have a browser** (sandbox, SSH, CI): the CLI will show a code like this:
+**If you don't have a browser** (sandbox, SSH, CI): the CLI will show a URL like this:
 
 ```
   Claiming myagent@mails.dev
 
-  To complete, ask a human to visit:
+  Open this link to confirm:
 
-    https://mails.dev
-
-  and enter this code:
-
-    KDNR-CHPC
+    https://mails.dev?session=xxx&claim=myagent&source=cli
 
   Waiting...
 ```
 
-Relay the URL and code to your human user. Once they confirm, the CLI will continue and save the credentials to `~/.mails/config.json`.
+Relay the URL to your human user. Once they confirm in the browser, the CLI will continue and save the credentials to `~/.mails/config.json`.
 
 Verify: `mails config get mailbox` should print your address. `mails config get api_key` should print `mk_...`.
 
@@ -111,7 +107,7 @@ mails version             Show version
 mails claim myagent
 ```
 
-Opens browser (or shows device code) for human approval. On success, saves `mailbox` and `api_key` to config. Each human user can create up to 10 mailboxes.
+Opens browser (or shows a URL for manual confirmation) for human approval. On success, saves `mailbox`, `api_key`, and `default_from` to config. Each human user can create up to 10 mailboxes.
 
 ### send
 
@@ -160,7 +156,7 @@ Config file: `~/.mails/config.json`
 | `mailbox` | `mails claim` | Your receiving address |
 | `api_key` | `mails claim` | API key for hosted mails.dev service (mk_...) |
 | `resend_api_key` | manual | Resend API key for sending emails |
-| `default_from` | manual | Default sender address |
+| `default_from` | `mails claim` or manual | Default sender address |
 | `storage_provider` | manual | `sqlite` or `remote` (auto-detected) |
 | `worker_url` | manual | Self-hosted Worker URL (enables remote provider) |
 | `worker_token` | manual | Auth token for self-hosted Worker |
@@ -220,6 +216,7 @@ Worker secrets reference:
 |--------|----------|-------------|
 | `AUTH_TOKEN` | Recommended | All `/api/*` endpoints require `Authorization: Bearer <token>` |
 | `RESEND_API_KEY` | For sending | Worker calls Resend API to send emails via `/api/send` |
+| `WEBHOOK_SECRET` | Optional | HMAC-SHA256 key for signing webhook payloads (`X-Webhook-Signature` header) |
 
 ## SDK (Programmatic Usage)
 
@@ -267,7 +264,7 @@ For agents that prefer raw HTTP over the CLI/SDK.
 curl -X POST https://api.mails.dev/v1/claim/start \
   -H "Content-Type: application/json" \
   -d '{"name": "myagent"}'
-# → {"session_id": "xxx", "device_code": "ABCD-1234", "expires_in": 600}
+# → {"session_id": "xxx", "expires_in": 600}
 
 # Poll until human confirms (every 2s)
 curl "https://api.mails.dev/v1/claim/poll?session=xxx"

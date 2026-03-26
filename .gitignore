@@ -2,8 +2,12 @@ node_modules/
 dist/
 *.tgz
 .env
-.env.local
+.env.*
 .DS_Store
+*.log
+coverage/
 test/.test-*
 worker/.wrangler/
+worker/node_modules/
 deploy/
+worker/package-lock.json

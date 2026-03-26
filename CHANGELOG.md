@@ -14,9 +14,9 @@ All notable changes to this project will be documented in this file.
 - **From address validation** — `/api/send` enforces from matches token's mailbox
 - **Error handling** — try/catch in email handler, network error wrapping in WorkerSendProvider
 - **Key path logging** — console.log/error on email receive, send, and errors
-- **SDK `deleteEmail`** — available in remote, SQLite providers, and SDK export
+- **SDK `getEmail` and `deleteEmail`** — available in remote, SQLite providers, and SDK export
 - **Worker file split** — handlers/ directory for better maintainability
-- **53 new handler tests** + 7 worker-send tests (187 total)
+- **57 new handler tests** + 7 worker-send tests (187 total)
 - **Git-based Worker deployment** via GitHub Actions
 
 ### Changed

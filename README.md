@@ -145,7 +145,7 @@ mails config get <key>          # Get a value
 ## SDK Usage
 
 ```typescript
-import { send, getInbox, searchInbox, waitForCode } from 'mails'
+import { send, getInbox, searchInbox, getEmail, deleteEmail, waitForCode } from 'mails'
 
 // Send
 const result = await send({
@@ -170,6 +170,12 @@ const results = await searchInbox('agent@mails.dev', {
   query: 'password reset',
   direction: 'inbound',
 })
+
+// Get email details (with attachments)
+const email = await getEmail('email-id')
+
+// Delete email (cascade: attachments + R2)
+await deleteEmail('email-id')
 
 // Wait for verification code
 const code = await waitForCode('agent@mails.dev', { timeout: 30 })

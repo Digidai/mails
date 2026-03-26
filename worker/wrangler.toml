@@ -5,14 +5,14 @@ compatibility_date = "2024-12-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "mails"
-database_id = "300b8760-fc02-4b1d-b0c1-bb560ec3b65e"
+database_id = "REPLACE_WITH_YOUR_DATABASE_ID"
 
 [[r2_buckets]]
 binding = "ATTACHMENTS"
 bucket_name = "mails-attachments"
 
 # Email Routing: receive emails via email() handler
-# The catch-all rule in Cloudflare Dashboard routes *@genedai.space → this Worker
+# The catch-all rule in Cloudflare Dashboard routes *@yourdomain.com → this Worker
 [triggers]
 send_email = [{ name = "EMAIL" }]
 
