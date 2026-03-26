@@ -359,9 +359,32 @@ bun test:live         # Live E2E with real Resend + Cloudflare (requires .env)
 
 187 tests across 20 test files.
 
-## Agent Integration
+## Ecosystem
 
-Want your AI agent (Claude Code, OpenClaw, Cursor, etc.) to use this email system? See **[mails-skills](https://github.com/Digidai/mails-skills)** — install a skill file and your agent gets email capabilities.
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        mails ecosystem                       │
+│                                                              │
+│  ┌──────────────┐    ┌──────────────────┐    ┌───────────┐  │
+│  │  mails CLI   │    │  mails Worker    │    │   mails   │  │
+│  │  & SDK       │───▶│  (Cloudflare)    │◀───│  -skills  │  │
+│  │              │    │                  │    │           │  │
+│  │  npm i mails │    │  Receive + Send  │    │  Agent    │  │
+│  │              │    │  + Search + Code │    │  Skills   │  │
+│  └──────────────┘    └──────────────────┘    └───────────┘  │
+│    Human / Script        Infrastructure        AI Agents    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+| Project | What it is | Who uses it |
+|---|---|---|
+| **[mails](https://github.com/Digidai/mails)** (this repo) | Email server (Worker) + CLI + SDK | Developers deploying email infra |
+| **[mails-skills](https://github.com/Digidai/mails-skills)** | Skill files for AI agents | AI agents (Claude Code, OpenClaw, Cursor) |
+
+**Quick agent setup:**
+```bash
+git clone https://github.com/Digidai/mails-skills && cd mails-skills && ./install.sh
+```
 
 ## Contributing
 
