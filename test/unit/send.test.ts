@@ -5,7 +5,7 @@ import type { MailsConfig } from '../../src/core/types'
 
 const BASE_CONFIG: MailsConfig = {
   mode: 'hosted',
-  domain: 'mails.dev',
+  domain: 'genedai.space',
   mailbox: '',
   send_provider: 'resend',
   storage_provider: 'sqlite',
@@ -108,7 +108,7 @@ describe('send', () => {
       ...BASE_CONFIG,
       resend_api_key: undefined,
       api_key: 'mk_hosted_test',
-      default_from: 'agent@mails.dev',
+      default_from: 'agent@genedai.space',
     })
 
     globalThis.fetch = mock(async (_url: string, init: RequestInit) => {
@@ -119,7 +119,7 @@ describe('send', () => {
 
     const result = await send({ to: 'user@example.com', subject: 'Hosted', text: 'test' })
     expect(result.id).toBe('hosted_1')
-    expect(result.provider).toBe('mails.dev')
+    expect(result.provider).toBe('genedai.space')
   })
 
   test('api_key takes priority over resend_api_key', async () => {
@@ -127,7 +127,7 @@ describe('send', () => {
       ...BASE_CONFIG,
       resend_api_key: 're_should_not_use',
       api_key: 'mk_priority',
-      default_from: 'agent@mails.dev',
+      default_from: 'agent@genedai.space',
     })
 
     let usedUrl = ''
@@ -138,7 +138,7 @@ describe('send', () => {
 
     const result = await send({ to: 'user@example.com', subject: 'Priority', text: 'test' })
     expect(usedUrl).toContain('/v1/send')
-    expect(result.provider).toBe('mails.dev')
+    expect(result.provider).toBe('genedai.space')
   })
 
   test('throws when send_provider set but no credentials configured', async () => {

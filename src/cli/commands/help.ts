@@ -1,12 +1,12 @@
 export function helpCommand() {
   console.log(`
-mails - Email infrastructure for AI agents
+mails-agent - Email infrastructure for AI agents
 
 Usage:
   mails <command> [options]
 
 Commands:
-  claim         Claim a @mails.dev mailbox for your agent
+  claim         Claim a @genedai.space mailbox for your agent
   send          Send an email
   inbox         List received emails
   code          Wait for a verification code
@@ -15,10 +15,10 @@ Commands:
   version       Show version
 
 Claim:
-  mails claim <name>                    Claim name@mails.dev (max 10 per user)
+  mails claim <name>                    Claim name@genedai.space (max 10 per user)
                                         Opens browser for human approval.
-                                        In headless mode, shows a device code
-                                        for the human to enter at mails.dev.
+                                        In headless mode, shows a URL
+                                        for the human to confirm.
 
 Send:
   mails send --to <email> --subject <subject> --body <text>
@@ -44,9 +44,9 @@ Config:
   mails config path               Show config file path
 
 Environment:
-  MAILS_API_URL       Override API base URL (default: https://api.mails.dev)
-  MAILS_CLAIM_URL     Override claim page URL (default: https://mails.dev)
+  MAILS_API_URL       Override API base URL (default: https://mails-worker.genedai.workers.dev)
+  MAILS_CLAIM_URL     Override claim page URL (default: https://genedai.space)
 
-https://mails.dev
+https://github.com/Digidai/mails
 `.trim())
 }

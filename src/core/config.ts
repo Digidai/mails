@@ -8,7 +8,7 @@ const CONFIG_FILE = join(CONFIG_DIR, 'config.json')
 
 const DEFAULT_CONFIG: MailsConfig = {
   mode: 'hosted',
-  domain: 'mails.dev',
+  domain: 'genedai.space',
   mailbox: '',
   send_provider: 'resend',
   storage_provider: 'sqlite',
@@ -48,7 +48,7 @@ export function setConfigValue(key: string, value: string) {
  * Saves to config if successful.
  */
 export async function resolveApiKey(apiKey: string): Promise<string | null> {
-  const apiUrl = process.env.MAILS_API_URL || 'https://mails-dev-worker.o-u-turing.workers.dev'
+  const apiUrl = process.env.MAILS_API_URL || 'https://mails-worker.genedai.workers.dev'
   try {
     const res = await fetch(`${apiUrl}/v1/me`, {
       headers: { 'Authorization': `Bearer ${apiKey}` },

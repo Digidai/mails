@@ -5,7 +5,7 @@ interface RemoteProviderOptions {
   url: string
   /** Mailbox address for query scoping */
   mailbox: string
-  /** API key (for mails.dev hosted /v1/* endpoints). If set, uses /v1/* paths. */
+  /** API key (for hosted /v1/* endpoints). If set, uses /v1/* paths. */
   apiKey?: string
   /** Auth token (api_key or worker_token). Sent as Bearer header. */
   token?: string

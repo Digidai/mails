@@ -8,7 +8,7 @@ describe('resolveApiKey', () => {
   beforeEach(() => {
     saveConfig({
       mode: 'hosted',
-      domain: 'mails.dev',
+      domain: 'genedai.space',
       mailbox: '',
       send_provider: 'resend',
       storage_provider: 'sqlite',
@@ -25,20 +25,20 @@ describe('resolveApiKey', () => {
     globalThis.fetch = mock(async (url: string, init: RequestInit) => {
       requestUrl = url
       authHeader = (init.headers as Record<string, string>)['Authorization']
-      return new Response(JSON.stringify({ mailbox: 'agent@mails.dev' }))
+      return new Response(JSON.stringify({ mailbox: 'agent@genedai.space' }))
     }) as typeof fetch
 
     const result = await resolveApiKey('mk_test_key')
 
-    expect(result).toBe('agent@mails.dev')
+    expect(result).toBe('agent@genedai.space')
     expect(requestUrl).toContain('/v1/me')
     expect(authHeader).toBe('Bearer mk_test_key')
 
     // Verify saved to config
     const { loadConfig } = await import('../../src/core/config')
     const config = loadConfig()
-    expect(config.mailbox).toBe('agent@mails.dev')
-    expect(config.default_from).toBe('agent@mails.dev')
+    expect(config.mailbox).toBe('agent@genedai.space')
+    expect(config.default_from).toBe('agent@genedai.space')
   })
 
   test('returns null on API error', async () => {

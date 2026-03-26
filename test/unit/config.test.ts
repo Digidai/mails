@@ -7,7 +7,7 @@ describe('config', () => {
     // Reset config to defaults before each test
     saveConfig({
       mode: 'hosted',
-      domain: 'mails.dev',
+      domain: 'genedai.space',
       mailbox: '',
       send_provider: 'resend',
       storage_provider: 'sqlite',
@@ -17,7 +17,7 @@ describe('config', () => {
   test('loadConfig returns defaults', () => {
     const config = loadConfig()
     expect(config.mode).toBe('hosted')
-    expect(config.domain).toBe('mails.dev')
+    expect(config.domain).toBe('genedai.space')
     expect(config.send_provider).toBe('resend')
     expect(config.storage_provider).toBe('sqlite')
     expect(config.mailbox).toBe('')
@@ -59,7 +59,7 @@ describe('config', () => {
 
     const config = loadConfig()
     expect(config.mode).toBe('hosted')
-    expect(config.domain).toBe('mails.dev')
+    expect(config.domain).toBe('genedai.space')
     expect(config.storage_provider).toBe('sqlite')
   })
 })
