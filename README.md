@@ -34,9 +34,9 @@ Unlike raw email APIs that only send, mails gives your agent a complete email id
 ```bash
 npm install -g mails-agent
 # or
-bun install -g mails
+bun install -g mails-agent
 # or use directly
-npx mails
+npx mails-agent
 ```
 
 ## Quick Start
@@ -149,7 +149,7 @@ mails config get <key>          # Get a value
 ## SDK Usage
 
 ```typescript
-import { send, getInbox, searchInbox, getEmail, deleteEmail, waitForCode } from 'mails'
+import { send, getInbox, searchInbox, getEmail, deleteEmail, waitForCode } from 'mails-agent'
 
 // Send
 const result = await send({

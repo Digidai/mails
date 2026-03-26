@@ -149,7 +149,7 @@ mails config get <key>          # 値を取得
 ## SDK
 
 ```typescript
-import { send, getInbox, searchInbox, getEmail, deleteEmail, waitForCode } from 'mails'
+import { send, getInbox, searchInbox, getEmail, deleteEmail, waitForCode } from 'mails-agent'
 
 // 送信
 const result = await send({
@@ -388,8 +388,8 @@ bun test:live         # リアルE2E（.envにResendキーが必要）
 │  │  mails CLI   │    │  mails Worker    │    │   mails   │  │
 │  │  & SDK       │───▶│  (Cloudflare)    │◀───│  -skills  │  │
 │  │              │    │                  │    │           │  │
-│  │  npm i mails │    │  受信 + 送信     │    │  Agent    │  │
-│  │              │    │  + 検索 + コード  │    │  Skills   │  │
+│  │ npm i mails- │    │  受信 + 送信     │    │  Agent    │  │
+│  │    agent     │    │  + 検索 + コード  │    │  Skills   │  │
 │  └──────────────┘    └──────────────────┘    └───────────┘  │
 │   開発者 / スクリプト      インフラ             AI Agents    │
 └─────────────────────────────────────────────────────────────┘

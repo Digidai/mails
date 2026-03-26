@@ -1,4 +1,4 @@
-# Contributing to mails
+# Contributing to mails-agent
 
 Thanks for your interest in contributing! This guide will help you get started.
 
@@ -6,7 +6,7 @@ Thanks for your interest in contributing! This guide will help you get started.
 
 ```bash
 # Clone the repo
-git clone https://github.com/chekusu/mails.git
+git clone https://github.com/Digidai/mails.git
 cd mails
 
 # Install dependencies
@@ -76,7 +76,7 @@ test: add coverage for attachment parsing edge cases
 
 ## Reporting Bugs
 
-Open an issue at [github.com/chekusu/mails/issues](https://github.com/chekusu/mails/issues) with:
+Open an issue at [github.com/Digidai/mails/issues](https://github.com/Digidai/mails/issues) with:
 
 - Your `mails version` output
 - Steps to reproduce

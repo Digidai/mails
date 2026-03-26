@@ -9,7 +9,7 @@ You can send emails, receive emails, search your inbox, and extract verification
 ### Step 1: Install
 
 ```bash
-npm install -g mails
+npm install -g mails-agent
 ```
 
 Verify: `mails version` should print a version number.
@@ -223,7 +223,7 @@ Worker secrets reference:
 ## SDK (Programmatic Usage)
 
 ```typescript
-import { send, getInbox, searchInbox, waitForCode } from 'mails'
+import { send, getInbox, searchInbox, waitForCode } from 'mails-agent'
 
 // Send an email
 const result = await send({
@@ -342,5 +342,5 @@ curl -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
 ## Links
 
 - Website: https://mails.dev
-- npm: https://www.npmjs.com/package/mails
-- GitHub: https://github.com/chekusu/mails
+- npm: https://www.npmjs.com/package/mails-agent
+- GitHub: https://github.com/Digidai/mails

@@ -149,7 +149,7 @@ mails config get <key>          # 获取
 ## SDK
 
 ```typescript
-import { send, getInbox, searchInbox, getEmail, deleteEmail, waitForCode } from 'mails'
+import { send, getInbox, searchInbox, getEmail, deleteEmail, waitForCode } from 'mails-agent'
 
 // 发送
 const result = await send({
@@ -388,8 +388,8 @@ bun test:live         # 真实 E2E（需要 .env 配置 Resend key）
 │  │  mails CLI   │    │  mails Worker    │    │   mails   │  │
 │  │  & SDK       │───▶│  (Cloudflare)    │◀───│  -skills  │  │
 │  │              │    │                  │    │           │  │
-│  │  npm i mails │    │  收件 + 发件     │    │  Agent    │  │
-│  │              │    │  + 搜索 + 验证码  │    │  Skills   │  │
+│  │ npm i mails- │    │  收件 + 发件     │    │  Agent    │  │
+│  │    agent     │    │  + 搜索 + 验证码  │    │  Skills   │  │
 │  └──────────────┘    └──────────────────┘    └───────────┘  │
 │    开发者 / 脚本         基础设施              AI Agents    │
 └─────────────────────────────────────────────────────────────┘
