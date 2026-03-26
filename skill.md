@@ -1,6 +1,8 @@
 # mails — Email for AI Agents
 
-Send and receive emails. Get a free `@mails.dev` mailbox or use your own domain.
+You can send emails, receive emails, search your inbox, and extract verification codes. You have a free `@mails.dev` mailbox or can use a self-hosted domain.
+
+**Capabilities:** send (with attachments), receive, inbox search (FTS5), verification code extraction (EN/ZH/JA/KO), email deletion, webhook notifications.
 
 ## Onboarding (follow these steps in order)
 

@@ -10,44 +10,9 @@
 
 > **Agent 集成：** 使用 [mails-skills](https://github.com/Digidai/mails-skills) 一行命令为你的 Claude Code、OpenClaw 或任何 AI agent 添加邮件能力。
 
-## 工作原理
+## 为什么选择 mails？
 
-```
-                           发送                                       接收
-
-  Agent                                              外部发件人
-    |                                                  |
-    |  mails send --to user@example.com                |  发送邮件到 agent@mails.dev
-    |                                                  |
-    v                                                  v
-+--------+         +----------+              +-------------------+
-|  CLI   |-------->|  Resend  |---> SMTP --->| Cloudflare Email  |
-|  /SDK  |         |   API    |              |     Routing       |
-+--------+         +----------+              +-------------------+
-    |                                                  |
-    |  或 POST /v1/send（托管模式）                      |  email() handler
-    |                                                  v
-    v                                          +-------------+
-+-------------------+                          |   Worker    |
-| mails.dev 云服务   |                          | (自部署)     |
-| (每月 100 封免费)  |                          +-------------+
-+-------------------+                                  |
-                                                       |  存储
-                                                       v
-                                  +--------------------------------------+
-                                  |           存储 Provider               |
-                                  |                                      |
-                                  |     D1 (Worker)  /  SQLite          |
-                                  +--------------------------------------+
-                                                       |
-                                              通过 CLI/SDK 查询
-                                                       |
-                                                       v
-                                                    Agent
-                                              mails inbox
-                                              mails inbox --query "验证码"
-                                              mails code --to agent@mails.dev
-```
+与只能发送的原始邮件 API 不同，mails 为你的 Agent 提供完整的邮件身份 — 发送、接收、搜索、提取验证码，一个包搞定。免费领取 `@mails.dev` 邮箱，30 秒上手；或在自己的域名上自部署。
 
 ## 特性
 
@@ -96,6 +61,45 @@ mails config set worker_url https://your-worker.example.com
 mails config set worker_token YOUR_TOKEN
 mails config set mailbox agent@yourdomain.com
 mails inbox                          # 查询你的 Worker API
+```
+
+## 工作原理
+
+```
+                           发送                                       接收
+
+  Agent                                              外部发件人
+    |                                                  |
+    |  mails send --to user@example.com                |  发送邮件到 agent@mails.dev
+    |                                                  |
+    v                                                  v
++--------+         +----------+              +-------------------+
+|  CLI   |-------->|  Resend  |---> SMTP --->| Cloudflare Email  |
+|  /SDK  |         |   API    |              |     Routing       |
++--------+         +----------+              +-------------------+
+    |                                                  |
+    |  或 POST /v1/send（托管模式）                      |  email() handler
+    |                                                  v
+    v                                          +-------------+
++-------------------+                          |   Worker    |
+| mails.dev 云服务   |                          | (自部署)     |
+| (每月 100 封免费)  |                          +-------------+
++-------------------+                                  |
+                                                       |  存储
+                                                       v
+                                  +--------------------------------------+
+                                  |           存储 Provider               |
+                                  |                                      |
+                                  |     D1 (Worker)  /  SQLite          |
+                                  +--------------------------------------+
+                                                       |
+                                              通过 CLI/SDK 查询
+                                                       |
+                                                       v
+                                                    Agent
+                                              mails inbox
+                                              mails inbox --query "验证码"
+                                              mails code --to agent@mails.dev
 ```
 
 ## CLI 参考
@@ -182,7 +186,29 @@ const code = await waitForCode('agent@mails.dev', { timeout: 30 })
 if (code) console.log(code.code) // "123456"
 ```
 
-## 完整自部署指南
+## 存储 Provider
+
+CLI 自动检测存储 Provider：
+- 配置中有 `api_key` 或 `worker_url` → 远程（查询 Worker API）
+- 否则 → 本地 SQLite（`~/.mails/mails.db`）
+
+<details>
+<summary><strong>配置项</strong></summary>
+
+| 键 | 设置方式 | 说明 |
+|---|---------|------|
+| `mailbox` | `mails claim` 或手动 | 接收邮箱地址 |
+| `api_key` | `mails claim` | mails.dev 托管服务 API key（mk_...） |
+| `worker_url` | 手动 | 自部署 Worker URL |
+| `worker_token` | 手动 | 自部署 Worker 鉴权 token |
+| `resend_api_key` | 手动 | Resend API key（设置 worker_url 后不需要） |
+| `default_from` | `mails claim` 或手动 | 默认发件人地址 |
+| `storage_provider` | 自动 | `sqlite` 或 `remote`（自动检测） |
+
+</details>
+
+<details>
+<summary><strong>完整自部署指南</strong></summary>
 
 用你自己的域名 + Cloudflare + Resend 运行全套邮件系统，不依赖 mails.dev。
 
@@ -337,25 +363,10 @@ CLI/SDK 发送邮件时，按以下顺序检查配置：
 
 设置了 `worker_url` 后，客户端不需要 `resend_api_key` — Resend key 作为密钥存储在 Worker 侧。
 
-## 存储 Provider
+</details>
 
-CLI 自动检测存储 Provider：
-- 配置中有 `api_key` 或 `worker_url` → 远程（查询 Worker API）
-- 否则 → 本地 SQLite（`~/.mails/mails.db`）
-
-## 配置项
-
-| 键 | 设置方式 | 说明 |
-|---|---------|------|
-| `mailbox` | `mails claim` 或手动 | 接收邮箱地址 |
-| `api_key` | `mails claim` | mails.dev 托管服务 API key（mk_...） |
-| `worker_url` | 手动 | 自部署 Worker URL |
-| `worker_token` | 手动 | 自部署 Worker 鉴权 token |
-| `resend_api_key` | 手动 | Resend API key（设置 worker_url 后不需要） |
-| `default_from` | `mails claim` 或手动 | 默认发件人地址 |
-| `storage_provider` | 自动 | `sqlite` 或 `remote`（自动检测） |
-
-## 测试
+<details>
+<summary><strong>测试</strong></summary>
 
 ```bash
 bun test              # 单元测试 + mock E2E
@@ -364,6 +375,8 @@ bun test:live         # 真实 E2E（需要 .env 配置 Resend key）
 ```
 
 187 个测试，分布在 20 个测试文件中。
+
+</details>
 
 ## 生态
 

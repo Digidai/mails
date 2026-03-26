@@ -10,44 +10,9 @@ AIエージェント向けのメールインフラ。プログラムでメール
 
 > **Agent連携：** [mails-skills](https://github.com/Digidai/mails-skills) を使えば、Claude Code、OpenClaw、その他のAIエージェントにワンコマンドでメール機能を追加できます。
 
-## 仕組み
+## なぜ mails？
 
-```
-                           送信                                       受信
-
-  Agent                                              外部送信者
-    |                                                  |
-    |  mails send --to user@example.com                |  agent@mails.dev にメール送信
-    |                                                  |
-    v                                                  v
-+--------+         +----------+              +-------------------+
-|  CLI   |-------->|  Resend  |---> SMTP --->| Cloudflare Email  |
-|  /SDK  |         |   API    |              |     Routing       |
-+--------+         +----------+              +-------------------+
-    |                                                  |
-    |  または POST /v1/send（ホスティング）               |  email() handler
-    |                                                  v
-    v                                          +-------------+
-+-------------------+                          |   Worker    |
-| mails.dev クラウド |                          | (セルフホスト)|
-| (月100通無料)      |                          +-------------+
-+-------------------+                                  |
-                                                       |  保存
-                                                       v
-                                  +--------------------------------------+
-                                  |         ストレージプロバイダー          |
-                                  |                                      |
-                                  |     D1 (Worker)  /  SQLite          |
-                                  +--------------------------------------+
-                                                       |
-                                              CLI/SDKで問い合わせ
-                                                       |
-                                                       v
-                                                    Agent
-                                              mails inbox
-                                              mails inbox --query "コード"
-                                              mails code --to agent@mails.dev
-```
+メール送信のみの生のAPIとは異なり、mails はエージェントに完全なメールアイデンティティを提供します — 送信、受信、検索、認証コード抽出をワンパッケージで。無料の `@mails.dev` メールアドレスを取得して30秒で開始、または独自ドメインでセルフホスト。
 
 ## 特徴
 
@@ -96,6 +61,45 @@ mails config set worker_url https://your-worker.example.com
 mails config set worker_token YOUR_TOKEN
 mails config set mailbox agent@yourdomain.com
 mails inbox                          # Worker APIに問い合わせ
+```
+
+## 仕組み
+
+```
+                           送信                                       受信
+
+  Agent                                              外部送信者
+    |                                                  |
+    |  mails send --to user@example.com                |  agent@mails.dev にメール送信
+    |                                                  |
+    v                                                  v
++--------+         +----------+              +-------------------+
+|  CLI   |-------->|  Resend  |---> SMTP --->| Cloudflare Email  |
+|  /SDK  |         |   API    |              |     Routing       |
++--------+         +----------+              +-------------------+
+    |                                                  |
+    |  または POST /v1/send（ホスティング）               |  email() handler
+    |                                                  v
+    v                                          +-------------+
++-------------------+                          |   Worker    |
+| mails.dev クラウド |                          | (セルフホスト)|
+| (月100通無料)      |                          +-------------+
++-------------------+                                  |
+                                                       |  保存
+                                                       v
+                                  +--------------------------------------+
+                                  |         ストレージプロバイダー          |
+                                  |                                      |
+                                  |     D1 (Worker)  /  SQLite          |
+                                  +--------------------------------------+
+                                                       |
+                                              CLI/SDKで問い合わせ
+                                                       |
+                                                       v
+                                                    Agent
+                                              mails inbox
+                                              mails inbox --query "コード"
+                                              mails code --to agent@mails.dev
 ```
 
 ## CLIリファレンス
@@ -182,7 +186,29 @@ const code = await waitForCode('agent@mails.dev', { timeout: 30 })
 if (code) console.log(code.code) // "123456"
 ```
 
-## セルフホスト完全ガイド
+## ストレージプロバイダー
+
+CLIはストレージプロバイダーを自動検出：
+- 設定に `api_key` または `worker_url` がある → リモート（Worker APIに問い合わせ）
+- それ以外 → ローカルSQLite（`~/.mails/mails.db`）
+
+<details>
+<summary><strong>設定キー</strong></summary>
+
+| キー | 設定方法 | 説明 |
+|-----|---------|------|
+| `mailbox` | `mails claim` または手動 | 受信メールアドレス |
+| `api_key` | `mails claim` | mails.devホスティングサービスAPIキー（mk_...） |
+| `worker_url` | 手動 | セルフホストWorker URL |
+| `worker_token` | 手動 | セルフホストWorker認証トークン |
+| `resend_api_key` | 手動 | Resend APIキー（worker_url設定時は不要） |
+| `default_from` | `mails claim` または手動 | デフォルト送信者アドレス |
+| `storage_provider` | 自動 | `sqlite` または `remote`（自動検出） |
+
+</details>
+
+<details>
+<summary><strong>セルフホスト完全ガイド</strong></summary>
 
 自分のドメイン + Cloudflare + Resend でメールシステム全体を運用。mails.devに依存しません。
 
@@ -337,25 +363,10 @@ CLI/SDKがメールを送信する際、以下の順序で設定を確認：
 
 `worker_url` を設定すれば、クライアント側に `resend_api_key` は不要 — ResendキーはWorker側にシークレットとして保存されます。
 
-## ストレージプロバイダー
+</details>
 
-CLIはストレージプロバイダーを自動検出：
-- 設定に `api_key` または `worker_url` がある → リモート（Worker APIに問い合わせ）
-- それ以外 → ローカルSQLite（`~/.mails/mails.db`）
-
-## 設定キー
-
-| キー | 設定方法 | 説明 |
-|-----|---------|------|
-| `mailbox` | `mails claim` または手動 | 受信メールアドレス |
-| `api_key` | `mails claim` | mails.devホスティングサービスAPIキー（mk_...） |
-| `worker_url` | 手動 | セルフホストWorker URL |
-| `worker_token` | 手動 | セルフホストWorker認証トークン |
-| `resend_api_key` | 手動 | Resend APIキー（worker_url設定時は不要） |
-| `default_from` | `mails claim` または手動 | デフォルト送信者アドレス |
-| `storage_provider` | 自動 | `sqlite` または `remote`（自動検出） |
-
-## テスト
+<details>
+<summary><strong>テスト</strong></summary>
 
 ```bash
 bun test              # ユニットテスト + mock E2E
@@ -364,6 +375,8 @@ bun test:live         # リアルE2E（.envにResendキーが必要）
 ```
 
 187テスト、20テストファイル。
+
+</details>
 
 ## エコシステム
 
