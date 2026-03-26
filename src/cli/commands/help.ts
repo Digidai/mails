@@ -6,7 +6,7 @@ Usage:
   mails <command> [options]
 
 Commands:
-  claim         Claim a @genedai.space mailbox for your agent
+  claim         Claim a @mails0.com mailbox for your agent
   send          Send an email
   inbox         List received emails
   code          Wait for a verification code
@@ -15,7 +15,7 @@ Commands:
   version       Show version
 
 Claim:
-  mails claim <name>                    Claim name@genedai.space (max 10 per user)
+  mails claim <name>                    Claim name@mails0.com (max 10 per user)
                                         Opens browser for human approval.
                                         In headless mode, shows a URL
                                         for the human to confirm.
@@ -45,7 +45,7 @@ Config:
 
 Environment:
   MAILS_API_URL       Override API base URL (default: https://mails-worker.genedai.workers.dev)
-  MAILS_CLAIM_URL     Override claim page URL (default: https://genedai.space)
+  MAILS_CLAIM_URL     Override claim page URL (default: https://mails0.com)
 
 https://github.com/Digidai/mails
 `.trim())

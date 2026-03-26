@@ -19,7 +19,7 @@ describe('Hosted send provider', () => {
       requestBody = JSON.parse(init.body as string)
       return new Response(JSON.stringify({
         id: 'hosted_msg_1',
-        from: 'agent@genedai.space',
+        from: 'agent@mails0.com',
         to: ['user@example.com'],
         sends_this_month: 5,
         monthly_limit: 100,
@@ -28,14 +28,14 @@ describe('Hosted send provider', () => {
 
     const provider = createHostedSendProvider('mk_test_key', 'http://localhost:3160')
     const result = await provider.send({
-      from: 'agent@genedai.space',
+      from: 'agent@mails0.com',
       to: ['user@example.com'],
       subject: 'Test',
       text: 'Hello',
     })
 
     expect(result.id).toBe('hosted_msg_1')
-    expect(result.provider).toBe('genedai.space')
+    expect(result.provider).toBe('mails0.com')
     expect(requestUrl).toBe('http://localhost:3160/v1/send')
     expect(authHeader).toBe('Bearer mk_test_key')
     expect(requestBody.to).toEqual(['user@example.com'])

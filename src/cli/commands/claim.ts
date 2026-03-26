@@ -1,7 +1,7 @@
 import { setConfigValue } from '../../core/config.js'
 
 const API_BASE = process.env.MAILS_API_URL || 'https://mails-worker.genedai.workers.dev'
-const CLAIM_PAGE = process.env.MAILS_CLAIM_URL || 'https://genedai.space'
+const CLAIM_PAGE = process.env.MAILS_CLAIM_URL || 'https://mails0.com'
 const POLL_INTERVAL = 2000
 
 export async function claimCommand(args: string[]) {
@@ -9,7 +9,7 @@ export async function claimCommand(args: string[]) {
 
   if (!name) {
     console.error('Usage: mails claim <name>')
-    console.error('Example: mails claim myagent  →  myagent@genedai.space')
+    console.error('Example: mails claim myagent  →  myagent@mails0.com')
     process.exit(1)
   }
 
@@ -47,12 +47,12 @@ export async function claimCommand(args: string[]) {
   // 3. Show info
   console.log('')
   if (browserOpened) {
-    console.log(`  Claiming ${name}@genedai.space — confirm in your browser.`)
+    console.log(`  Claiming ${name}@mails0.com — confirm in your browser.`)
     console.log('')
     console.log(`  If the page didn't open: ${claimUrl}`)
   } else {
     // No browser (sandbox / SSH / headless)
-    console.log(`  Claiming ${name}@genedai.space`)
+    console.log(`  Claiming ${name}@mails0.com`)
     console.log('')
     console.log(`  Open this link to confirm:`)
     console.log('')

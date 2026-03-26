@@ -36,7 +36,7 @@ describe('storage resolver', () => {
   beforeEach(() => {
     saveConfig({
       mode: 'hosted',
-      domain: 'genedai.space',
+      domain: 'mails0.com',
       mailbox: '',
       send_provider: 'resend',
       storage_provider: 'sqlite',
@@ -55,8 +55,8 @@ describe('storage resolver', () => {
   test('auto-detects remote when api_key is set', async () => {
     saveConfig({
       mode: 'hosted',
-      domain: 'genedai.space',
-      mailbox: 'agent@genedai.space',
+      domain: 'mails0.com',
+      mailbox: 'agent@mails0.com',
       send_provider: 'resend',
       storage_provider: '',
       api_key: 'mk_test',
@@ -85,8 +85,8 @@ describe('storage resolver', () => {
     globalThis.fetch = mock(async () => new Response(JSON.stringify({ emails: [] }))) as typeof fetch
     saveConfig({
       mode: 'hosted',
-      domain: 'genedai.space',
-      mailbox: 'agent@genedai.space',
+      domain: 'mails0.com',
+      mailbox: 'agent@mails0.com',
       send_provider: 'resend',
       storage_provider: 'remote',
       api_key: 'mk_test',
@@ -99,7 +99,7 @@ describe('storage resolver', () => {
   test('throws when remote but no mailbox', async () => {
     saveConfig({
       mode: 'hosted',
-      domain: 'genedai.space',
+      domain: 'mails0.com',
       mailbox: '',
       send_provider: 'resend',
       storage_provider: 'remote',

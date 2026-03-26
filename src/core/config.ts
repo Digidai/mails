@@ -8,7 +8,7 @@ const CONFIG_FILE = join(CONFIG_DIR, 'config.json')
 
 const DEFAULT_CONFIG: MailsConfig = {
   mode: 'hosted',
-  domain: 'genedai.space',
+  domain: 'mails0.com',
   mailbox: '',
   send_provider: 'resend',
   storage_provider: 'sqlite',

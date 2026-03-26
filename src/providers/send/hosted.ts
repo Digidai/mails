@@ -6,7 +6,7 @@ export function createHostedSendProvider(apiKey: string, apiUrl?: string): SendP
   const baseUrl = apiUrl || process.env.MAILS_API_URL || DEFAULT_API_URL
 
   return {
-    name: 'genedai.space',
+    name: 'mails0.com',
 
     async send(options): Promise<SendResult> {
       const body: Record<string, unknown> = {
@@ -61,7 +61,7 @@ export function createHostedSendProvider(apiKey: string, apiUrl?: string): SendP
         process.stderr.write(`  [${data.sends_this_month}/${data.monthly_limit} this month]\n`)
       }
 
-      return { id: data.id!, provider: 'genedai.space', provider_id: data.id }
+      return { id: data.id!, provider: 'mails0.com', provider_id: data.id }
     },
   }
 }
