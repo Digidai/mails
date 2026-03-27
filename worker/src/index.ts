@@ -32,57 +32,66 @@ export default {
     // /health is always public
     if (url.pathname === '/health') {
       response = Response.json({ ok: true })
-    } else if (url.pathname.startsWith('/api/')) {
-      // Resolve auth — returns mailbox binding if auth_tokens is active
-      const auth = await resolveAuth(request, env)
+    } else if (url.pathname.startsWith('/v1/') || url.pathname.startsWith('/api/')) {
+      // /v1/* = hosted API (always requires auth_tokens, mailbox-scoped)
+      // /api/* = self-hosted API (supports AUTH_TOKEN, public fallback)
+      const isV1 = url.pathname.startsWith('/v1/')
+      const route = isV1 ? url.pathname.replace('/v1/', '/api/') : url.pathname
+
+      const auth = await resolveAuth(request, env, isV1)
       if (auth === null) {
         response = Response.json({ error: 'Unauthorized' }, { status: 401 })
       } else {
         // When mailbox is known from token, use it; otherwise fall through to ?to= param
         const mailbox = auth.mailbox ?? undefined
 
-        try {
-          switch (url.pathname) {
-            case '/api/inbox':
-              response = await handleInbox(url, env, mailbox)
-              break
-            case '/api/code':
-              response = await handleGetCode(url, env, mailbox)
-              break
-            case '/api/email':
-              if (request.method === 'DELETE') {
-                response = await handleDeleteEmail(url, env, mailbox)
-              } else {
-                response = await handleGetEmail(url, env, mailbox)
-              }
-              break
-            case '/api/send':
-              if (request.method !== 'POST') {
-                response = Response.json({ error: 'Method not allowed' }, { status: 405 })
+        // /v1/* always requires mailbox binding (except /v1/me)
+        if (isV1 && !mailbox && route !== '/api/me') {
+          response = Response.json({ error: 'Unauthorized' }, { status: 401 })
+        } else {
+          try {
+            switch (route) {
+              case '/api/inbox':
+                response = await handleInbox(url, env, mailbox)
                 break
-              }
-              response = await handleSend(request, env, mailbox)
-              break
-            case '/api/me':
-              response = Response.json({
-                worker: 'mails-worker',
-                mailbox: mailbox ?? null,
-                send: !!env.RESEND_API_KEY,
-              })
-              break
-            case '/api/attachment':
-              response = await handleGetAttachment(url, env, mailbox)
-              break
-            default:
-              response = Response.json({ error: 'Not found' }, { status: 404 })
+              case '/api/code':
+                response = await handleGetCode(url, env, mailbox)
+                break
+              case '/api/email':
+                if (request.method === 'DELETE') {
+                  response = await handleDeleteEmail(url, env, mailbox)
+                } else {
+                  response = await handleGetEmail(url, env, mailbox)
+                }
+                break
+              case '/api/send':
+                if (request.method !== 'POST') {
+                  response = Response.json({ error: 'Method not allowed' }, { status: 405 })
+                  break
+                }
+                response = await handleSend(request, env, mailbox)
+                break
+              case '/api/me':
+                response = Response.json({
+                  worker: 'mails-worker',
+                  mailbox: mailbox ?? null,
+                  send: !!env.RESEND_API_KEY,
+                })
+                break
+              case '/api/attachment':
+                response = await handleGetAttachment(url, env, mailbox)
+                break
+              default:
+                response = Response.json({ error: 'Not found' }, { status: 404 })
+            }
+          } catch (err) {
+            console.error(`API error ${url.pathname}:`, err)
+            // Never expose internal error details to clients
+            response = Response.json(
+              { error: 'Internal server error' },
+              { status: 500 }
+            )
           }
-        } catch (err) {
-          console.error(`API error ${url.pathname}:`, err)
-          // Never expose internal error details to clients
-          response = Response.json(
-            { error: 'Internal server error' },
-            { status: 500 }
-          )
         }
       }
     } else {

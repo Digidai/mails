@@ -10,7 +10,7 @@ import type { AuthContext, Env } from '../types'
  *
  * Returns null if auth is required but token is invalid/missing.
  */
-export async function resolveAuth(request: Request, env: Env): Promise<AuthContext | null> {
+export async function resolveAuth(request: Request, env: Env, requireTokenTable = false): Promise<AuthContext | null> {
   const token = extractBearerToken(request)
 
   // D1 auth_tokens table mode (preferred, supports mailbox isolation)
@@ -22,6 +22,11 @@ export async function resolveAuth(request: Request, env: Env): Promise<AuthConte
     ).bind(token).first<{ mailbox: string }>()
     if (!row) return null
     return { mailbox: row.mailbox }
+  }
+
+  // /v1/* routes always require auth_tokens table — no fallback
+  if (requireTokenTable) {
+    return null
   }
 
   // Legacy single AUTH_TOKEN mode (no mailbox isolation)

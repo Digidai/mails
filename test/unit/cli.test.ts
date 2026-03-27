@@ -117,7 +117,7 @@ describe('CLI: help command', () => {
     expect(output).toContain('code')
     expect(output).toContain('config')
     expect(output).toContain('--query')
-    expect(output).toContain('mails.dev')
+    expect(output).toContain('mails0.com')
   })
 })
 
