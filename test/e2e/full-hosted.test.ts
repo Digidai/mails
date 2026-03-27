@@ -1,8 +1,8 @@
 /**
  * Full end-to-end test: hosted (cloud) mode.
  *
- * Tests the complete agent lifecycle against production mails.dev:
- *   1. Claim a @mails.dev mailbox
+ * Tests the complete agent lifecycle against production mails0.com:
+ *   1. Claim a @mails0.com mailbox
  *   2. Send email TO the mailbox (from kimeeru.com via separate Resend key)
  *   3. Wait for email to arrive via Cloudflare Email Routing → Worker → D1
  *   4. Query inbox via remote provider (api_key auth)
@@ -10,8 +10,8 @@
  *   6. Send email FROM the mailbox via hosted /v1/send
  *
  * Requires .env with:
- *   RESEND_API_KEY=re_xxx           (kimeeru domain, for sending TO mails.dev)
- *   WORKER_URL=https://mails-dev-worker.o-u-turing.workers.dev
+ *   RESEND_API_KEY=re_xxx           (kimeeru domain, for sending TO mails0.com)
+ *   WORKER_URL=https://mails-worker.genedai.workers.dev
  *
  * Run: bun test test/e2e/full-hosted.test.ts
  */
@@ -23,8 +23,8 @@ import { execSync } from 'child_process'
 import { join } from 'path'
 import { homedir } from 'os'
 
-const RESEND_API_KEY = process.env.RESEND_API_KEY // kimeeru key for sending TO mails.dev
-const WORKER_URL = process.env.WORKER_URL || 'https://mails-dev-worker.o-u-turing.workers.dev'
+const RESEND_API_KEY = process.env.RESEND_API_KEY // kimeeru key for sending TO mails0.com
+const WORKER_URL = process.env.WORKER_URL || 'https://mails-worker.genedai.workers.dev'
 // Pre-claimed mailbox for full E2E — set in .env or claim manually first
 const TEST_MAILBOX = process.env.E2E_MAILBOX || ''
 const TEST_API_KEY = process.env.E2E_API_KEY || ''
@@ -147,6 +147,6 @@ describe.skipIf(skip)('Full E2E: hosted cloud mode', () => {
 
     console.log(`  Sent from ${TEST_MAILBOX}: ${result.id}`)
     expect(result.id).toBeTruthy()
-    expect(result.provider).toBe('mails.dev')
+    expect(result.provider).toBe('mails0.com')
   })
 })

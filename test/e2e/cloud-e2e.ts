@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 /**
- * E2E test runner for tests that depend on the mails.dev cloud worker.
+ * E2E test runner for tests that depend on the mails0.com cloud worker.
  *
- * Automatically starts the mails.dev worker, runs tests, then cleans up.
+ * Automatically starts the mails0.com worker, runs tests, then cleans up.
  *
  * Requires:
- *   - ~/Codes/mails.dev/worker exists with dependencies installed
+ *   - ~/Codes/mails-web/worker exists with dependencies installed
  *   - D1 schema + migrations applied locally
  *
  * Usage:
@@ -16,7 +16,7 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { execSync } from 'child_process'
 
-const MAILS_DEV_WORKER = join(homedir(), 'Codes', 'mails.dev', 'worker')
+const MAILS_DEV_WORKER = join(homedir(), 'Codes', 'mails-web', 'worker')
 const PORT = 3160
 const API = `http://localhost:${PORT}`
 
@@ -36,7 +36,7 @@ async function waitForServer(url: string, timeout = 20000) {
 
 async function setup() {
   // Ensure deps
-  console.log('Installing mails.dev worker dependencies...')
+  console.log('Installing mails0.com worker dependencies...')
   execSync('bun install', { cwd: MAILS_DEV_WORKER, stdio: 'pipe' })
 
   // Apply schema + migrations
@@ -58,7 +58,7 @@ async function setup() {
   } catch {}
 
   // Start worker
-  console.log(`Starting mails.dev worker on :${PORT}...`)
+  console.log(`Starting mails0.com worker on :${PORT}...`)
   worker = spawn({
     cmd: ['npx', 'wrangler', 'dev', '--port', String(PORT)],
     cwd: MAILS_DEV_WORKER,
@@ -87,7 +87,7 @@ const testFiles = [
   'test/e2e/claim-flow.test.ts',
 ]
 
-console.log(`Running ${testFiles.length} test file(s) against mails.dev worker...\n`)
+console.log(`Running ${testFiles.length} test file(s) against mails0.com worker...\n`)
 
 const testProc = spawn({
   cmd: ['bun', 'test', ...testFiles],

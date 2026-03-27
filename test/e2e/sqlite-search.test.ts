@@ -43,7 +43,7 @@ describe('E2E: sqlite inbox search', () => {
 
     writeFileSync(join(configDir, 'config.json'), JSON.stringify({
       mode: 'hosted',
-      domain: 'mails.dev',
+      domain: 'mails0.com',
       mailbox,
       send_provider: 'resend',
       storage_provider: 'sqlite',

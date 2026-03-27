@@ -1,18 +1,18 @@
 /**
  * Full end-to-end test: self-hosted (open-source worker) mode.
  *
- * Tests the complete lifecycle against the deployed OSS worker at test.mails.dev:
- *   1. Send email TO e2e@test.mails.dev (from kimeeru.com)
+ * Tests the complete lifecycle against the deployed OSS worker at test.mails0.com:
+ *   1. Send email TO e2e@test.mails0.com (from kimeeru.com)
  *   2. Email arrives via Cloudflare Email Routing → OSS Worker → D1
  *   3. CLI queries via remote provider (worker_url + worker_token)
  *   4. Search inbox
  *   5. Query verification code
  *
  * Requires .env with:
- *   RESEND_API_KEY=re_xxx              (kimeeru key, for sending TO test.mails.dev)
- *   OSS_WORKER_URL=https://mails-oss-test.o-u-turing.workers.dev
+ *   RESEND_API_KEY=re_xxx              (kimeeru key, for sending TO test.mails0.com)
+ *   OSS_WORKER_URL=https://mails-worker.genedai.workers.dev
  *   OSS_WORKER_TOKEN=oss_e2e_xxx       (AUTH_TOKEN set on the worker)
- *   OSS_MAILBOX=e2e@test.mails.dev
+ *   OSS_MAILBOX=e2e@test.mails0.com
  *
  * Run: bun test test/e2e/full-selfhosted.test.ts
  */
@@ -21,9 +21,9 @@ import { createRemoteProvider } from '../../src/providers/storage/remote'
 import { createResendProvider } from '../../src/providers/send/resend'
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY
-const OSS_WORKER_URL = process.env.OSS_WORKER_URL || 'https://mails-oss-test.o-u-turing.workers.dev'
+const OSS_WORKER_URL = process.env.OSS_WORKER_URL || 'https://mails-worker.genedai.workers.dev'
 const OSS_WORKER_TOKEN = process.env.OSS_WORKER_TOKEN || ''
-const OSS_MAILBOX = process.env.OSS_MAILBOX || 'e2e@test.mails.dev'
+const OSS_MAILBOX = process.env.OSS_MAILBOX || 'e2e@test.mails0.com'
 
 const skip = !RESEND_API_KEY || !OSS_WORKER_TOKEN
 

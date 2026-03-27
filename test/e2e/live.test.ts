@@ -1,11 +1,11 @@
 /**
- * Live E2E test — sends real emails and tests receive via mails.dev worker.
+ * Live E2E test — sends real emails and tests receive via mails0.com worker.
  *
  * Requires .env with:
  *   RESEND_API_KEY=re_xxx
- *   DEFAULT_FROM=Name <noreply@yourdomain.com>  (must NOT be @mails.dev to avoid suppression)
+ *   DEFAULT_FROM=Name <noreply@yourdomain.com>  (must NOT be @mails0.com to avoid suppression)
  *   TEST_TO=your-email@example.com
- *   WORKER_URL=https://mails-dev-worker.o-u-turing.workers.dev
+ *   WORKER_URL=https://mails-worker.genedai.workers.dev
  *
  * Run:  bun test test/e2e/live.test.ts
  */
@@ -17,12 +17,12 @@ import { setConfigValue } from '../../src/core/config'
 const RESEND_API_KEY = process.env.RESEND_API_KEY
 const DEFAULT_FROM = process.env.DEFAULT_FROM
 const TEST_TO = process.env.TEST_TO
-const WORKER_URL = process.env.WORKER_URL || 'https://mails-dev-worker.o-u-turing.workers.dev'
+const WORKER_URL = process.env.WORKER_URL || 'https://mails-worker.genedai.workers.dev'
 
 const skip = !RESEND_API_KEY || !DEFAULT_FROM || !TEST_TO
 
 // Unique mailbox for this test run to avoid collisions
-const testMailbox = `e2e-${Date.now()}@mails.dev`
+const testMailbox = `e2e-${Date.now()}@mails0.com`
 
 describe.skipIf(skip)('Live E2E: send emails', () => {
   beforeAll(() => {
@@ -76,7 +76,7 @@ describe.skipIf(skip)('Live E2E: send emails', () => {
   })
 })
 
-describe.skipIf(skip)('Live E2E: receive emails via mails.dev worker', () => {
+describe.skipIf(skip)('Live E2E: receive emails via mails0.com worker', () => {
   const verificationCode = String(Math.floor(100000 + Math.random() * 900000))
   let sentEmailId = ''
 
@@ -84,7 +84,7 @@ describe.skipIf(skip)('Live E2E: receive emails via mails.dev worker', () => {
     setConfigValue('resend_api_key', RESEND_API_KEY!)
   })
 
-  test('send email to mails.dev mailbox', async () => {
+  test('send email to mails0.com mailbox', async () => {
     const provider = createResendProvider(RESEND_API_KEY!)
     const result = await provider.send({
       from: DEFAULT_FROM!,

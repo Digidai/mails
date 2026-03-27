@@ -36,7 +36,7 @@ describe('receive module (via sqlite)', () => {
     // Reset config to use sqlite (clear any api_key/worker_url that would trigger remote)
     saveConfig({
       mode: 'hosted',
-      domain: 'mails.dev',
+      domain: 'mails0.com',
       mailbox: 'agent@test.com',
       send_provider: 'resend',
       storage_provider: 'sqlite',

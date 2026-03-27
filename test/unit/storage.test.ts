@@ -9,7 +9,7 @@ describe('storage resolver', () => {
   beforeEach(() => {
     saveConfig({
       mode: 'hosted',
-      domain: 'mails.dev',
+      domain: 'mails0.com',
       mailbox: '',
       send_provider: 'resend',
       storage_provider: 'sqlite',

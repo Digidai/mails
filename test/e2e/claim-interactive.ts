@@ -6,8 +6,8 @@
  *   bun run test/e2e/claim-interactive.ts [name]
  *
  * This will:
- *   1. Start mails.dev worker on :3160
- *   2. Start mails.dev frontend on :3150
+ *   1. Start mails0.com worker on :3160
+ *   2. Start mails0.com frontend on :3150
  *   3. Run `mails claim <name>` pointing to local servers
  *   4. Open browser — you log in with Clerk and click Claim
  *   5. CLI receives result, saves to ~/.mails/config.json
@@ -18,7 +18,7 @@ import { join } from 'path'
 import { homedir } from 'os'
 
 const name = process.argv[2] || `test${Date.now().toString(36)}`
-const MAILS_DEV_DIR = process.env.MAILS_DEV_DIR || join(homedir(), 'Codes', 'mails.dev')
+const MAILS_DEV_DIR = process.env.MAILS_DEV_DIR || join(homedir(), 'Codes', 'mails-web')
 const MAILS_DIR = join(import.meta.dir, '..', '..')
 
 const procs: ReturnType<typeof spawn>[] = []

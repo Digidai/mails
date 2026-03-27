@@ -1,9 +1,9 @@
 /**
  * E2E test for the claim CLI polling flow.
  *
- * Requires mails.dev worker running locally.
+ * Requires mails0.com worker running locally.
  * Use `bun run test/e2e/cloud-e2e.ts` to start the worker automatically.
- * Or manually: cd ~/Codes/mails.dev/worker && npx wrangler dev --port 3160
+ * Or manually: cd ~/Codes/mails-web/worker && npx wrangler dev --port 3160
  *
  * Run: bun test test/e2e/claim-flow.test.ts
  */
@@ -16,7 +16,7 @@ import { execSync } from 'child_process'
 
 const API = process.env.MAILS_API_URL || 'http://localhost:3160'
 const CONFIG_FILE = join(homedir(), '.mails', 'config.json')
-const WORKER_DIR = process.env.MAILS_DEV_WORKER_DIR || join(homedir(), 'Codes', 'mails.dev', 'worker')
+const WORKER_DIR = process.env.MAILS_DEV_WORKER_DIR || join(homedir(), 'Codes', 'mails-web', 'worker')
 
 function d1(sql: string) {
   execSync(`cd ${WORKER_DIR} && npx wrangler d1 execute mails-dev --local --command "${sql.replace(/"/g, '\\"')}"`, { stdio: 'pipe' })
@@ -69,7 +69,7 @@ describe('E2E: claim polling flow', () => {
     expect(poll1Data.status).toBe('pending')
 
     // 3. Simulate browser confirm (write directly to D1)
-    const fullAddress = `${name}@mails.dev`
+    const fullAddress = `${name}@mails0.com`
     const apiKey = `mk_e2e_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`
     const userId = `test_${crypto.randomUUID()}`
     const now = new Date().toISOString()
@@ -142,7 +142,7 @@ describe('E2E: claim polling flow', () => {
     cleanupIds.sessions.push(sessionId!)
 
     // Simulate browser confirm via D1
-    const fullAddress = `${name}@mails.dev`
+    const fullAddress = `${name}@mails0.com`
     const apiKey = `mk_cli_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`
     const userId = `test_cli_${crypto.randomUUID()}`
     const now = new Date().toISOString()

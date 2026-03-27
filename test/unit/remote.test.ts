@@ -96,7 +96,7 @@ describe('Remote provider', () => {
     expect(provider.saveEmail({} as any)).rejects.toThrow('read-only')
   })
 
-  // --- Authenticated mode (mails.dev hosted, with apiKey) ---
+  // --- Authenticated mode (mails0.com hosted, with apiKey) ---
 
   test('uses /v1/* paths and Bearer header when apiKey is set', async () => {
     let requestUrl = ''
