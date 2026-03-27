@@ -1,6 +1,6 @@
 import { setConfigValue } from '../../core/config.js'
 
-const API_BASE = process.env.MAILS_API_URL || 'https://mails-worker.genedai.workers.dev'
+const API_BASE = process.env.MAILS_CLAIM_URL || 'https://mails0.com'
 const CLAIM_PAGE = process.env.MAILS_CLAIM_URL || 'https://mails0.com'
 const POLL_INTERVAL = 2000
 

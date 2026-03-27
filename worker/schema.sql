@@ -74,3 +74,17 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
 );
 
 CREATE INDEX IF NOT EXISTS idx_auth_tokens_mailbox ON auth_tokens(mailbox);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_tokens_mailbox_unique ON auth_tokens(mailbox);
+
+-- Claim sessions (temporary, 10-min expiry)
+CREATE TABLE IF NOT EXISTS claim_sessions (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  api_key TEXT,
+  mailbox TEXT,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_claim_sessions_status ON claim_sessions(status, expires_at);
