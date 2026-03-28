@@ -5,7 +5,7 @@ compatibility_date = "2024-12-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "mails"
-database_id = "300b8760-fc02-4b1d-b0c1-bb560ec3b65e"
+database_id = "YOUR_D1_DATABASE_ID"
 
 [[r2_buckets]]
 binding = "ATTACHMENTS"
