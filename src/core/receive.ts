@@ -1,4 +1,4 @@
-import type { Email, EmailQueryOptions, EmailSearchOptions } from './types.js'
+import type { Email, EmailThread, EmailQueryOptions, EmailSearchOptions, ThreadQueryOptions } from './types.js'
 import { getStorage } from './storage.js'
 
 export async function getInbox(mailbox: string, options?: EmailQueryOptions): Promise<Email[]> {
@@ -25,6 +25,22 @@ export async function deleteEmail(id: string): Promise<boolean> {
     throw new Error('Delete is not supported by the current storage provider')
   }
   return storage.deleteEmail(id)
+}
+
+export async function getThreads(mailbox: string, options?: ThreadQueryOptions): Promise<EmailThread[]> {
+  const storage = await getStorage()
+  if (!storage.getThreads) {
+    throw new Error('Threads are not supported by the current storage provider')
+  }
+  return storage.getThreads(mailbox, options)
+}
+
+export async function getThread(threadId: string): Promise<Email[]> {
+  const storage = await getStorage()
+  if (!storage.getThread) {
+    throw new Error('Threads are not supported by the current storage provider')
+  }
+  return storage.getThread(threadId)
 }
 
 export async function waitForCode(mailbox: string, options?: {

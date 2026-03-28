@@ -8,6 +8,7 @@ export async function handleInbox(url: URL, env: Env, mailbox?: string): Promise
   const offset = parseInt(url.searchParams.get('offset') ?? '0', 10) || 0
   const direction = url.searchParams.get('direction')
   const query = url.searchParams.get('query')?.trim()
+  const label = url.searchParams.get('label')?.trim()
 
   let sql = `
     SELECT id, mailbox, from_address, from_name, subject, code, direction, status,
@@ -18,6 +19,11 @@ export async function handleInbox(url: URL, env: Env, mailbox?: string): Promise
   if (direction === 'inbound' || direction === 'outbound') {
     sql += ' AND direction = ?'
     params.push(direction)
+  }
+
+  if (label) {
+    sql += ' AND id IN (SELECT email_id FROM email_labels WHERE label = ?)'
+    params.push(label)
   }
 
   if (query) {

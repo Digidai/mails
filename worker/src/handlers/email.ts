@@ -27,6 +27,9 @@ export async function handleGetEmail(url: URL, env: Env, mailbox?: string): Prom
     direction: 'inbound' | 'outbound'
     status: 'received' | 'sent' | 'failed' | 'queued'
     message_id: string | null
+    thread_id: string | null
+    in_reply_to: string | null
+    references: string | null
     has_attachments: number
     attachment_count: number
     attachment_names: string
@@ -55,12 +58,18 @@ export async function handleGetEmail(url: URL, env: Env, mailbox?: string): Prom
     created_at: string
   }>()
 
+  // Fetch labels
+  const labelRows = await env.DB.prepare(
+    'SELECT label FROM email_labels WHERE email_id = ?'
+  ).bind(id).all<{ label: string }>()
+
   return Response.json({
     ...row,
     headers: safeJsonParse(row.headers, {}),
     metadata: safeJsonParse(row.metadata, {}),
     has_attachments: Boolean(row.has_attachments),
     attachment_count: row.attachment_count ?? 0,
+    labels: (labelRows.results ?? []).map((r) => r.label),
     attachments: attachments.results.map((attachment) => ({
       ...attachment,
       downloadable: Boolean(attachment.storage_key),
@@ -97,6 +106,7 @@ export async function handleDeleteEmail(url: URL, env: Env, mailbox?: string): P
     deleteParams.push(mailbox)
   }
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM email_labels WHERE email_id = ?').bind(id),
     env.DB.prepare('DELETE FROM attachments WHERE email_id = ?').bind(id),
     env.DB.prepare(deleteEmailSql).bind(...deleteParams),
   ])

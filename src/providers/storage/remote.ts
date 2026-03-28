@@ -1,4 +1,4 @@
-import type { Email, EmailQueryOptions, EmailSearchOptions, StorageProvider } from '../../core/types.js'
+import type { Email, EmailThread, EmailQueryOptions, EmailSearchOptions, ThreadQueryOptions, StorageProvider } from '../../core/types.js'
 
 interface RemoteProviderOptions {
   /** Worker API base URL */
@@ -34,6 +34,8 @@ export function createRemoteProvider(options: RemoteProviderOptions): StoragePro
   function inboxPath() { return useAuthApi ? '/v1/inbox' : '/api/inbox' }
   function codePath() { return useAuthApi ? '/v1/code' : '/api/code' }
   function emailPath() { return useAuthApi ? '/v1/email' : '/api/email' }
+  function threadsPath() { return useAuthApi ? '/v1/threads' : '/api/threads' }
+  function threadPath() { return useAuthApi ? '/v1/thread' : '/api/thread' }
 
   function withMailbox(params: Record<string, string | number>): Record<string, string | number> {
     if (!useAuthApi) {
@@ -58,6 +60,7 @@ export function createRemoteProvider(options: RemoteProviderOptions): StoragePro
         limit: options?.limit ?? 20,
         offset: options?.offset ?? 0,
         ...(options?.direction ? { direction: options.direction } : {}),
+        ...(options?.label ? { label: options.label } : {}),
       }))
       if (!res.ok) {
         const data = await res.json() as { error?: string }
@@ -120,6 +123,30 @@ export function createRemoteProvider(options: RemoteProviderOptions): StoragePro
       const data = await res.json() as { code: string | null; from?: string; subject?: string }
       if (!data.code) return null
       return { code: data.code, from: data.from ?? '', subject: data.subject ?? '' }
+    },
+
+    async getThreads(_mailbox, options) {
+      const res = await apiFetch(threadsPath(), withMailbox({
+        limit: options?.limit ?? 20,
+        offset: options?.offset ?? 0,
+      }))
+      if (!res.ok) {
+        const data = await res.json() as { error?: string }
+        throw new Error(`API error: ${data.error ?? res.statusText}`)
+      }
+      const data = await res.json() as { threads: EmailThread[] }
+      return data.threads
+    },
+
+    async getThread(threadId) {
+      const res = await apiFetch(threadPath(), { id: threadId })
+      if (!res.ok) {
+        if (res.status === 404) return []
+        const data = await res.json() as { error?: string }
+        throw new Error(`API error: ${data.error ?? res.statusText}`)
+      }
+      const data = await res.json() as { emails: Email[] }
+      return data.emails
     },
   }
 }

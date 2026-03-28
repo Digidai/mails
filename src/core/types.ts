@@ -51,6 +51,10 @@ export interface Email {
   direction: 'inbound' | 'outbound'
   status: 'received' | 'sent' | 'failed' | 'queued'
   message_id?: string | null
+  thread_id?: string | null
+  in_reply_to?: string | null
+  references?: string | null
+  labels?: string[]
   has_attachments?: boolean
   attachment_count?: number
   attachment_names?: string
@@ -59,6 +63,30 @@ export interface Email {
   attachments?: Attachment[]
   received_at: string
   created_at: string
+}
+
+export interface EmailThread {
+  thread_id: string
+  latest_email_id: string
+  subject: string
+  from_address: string
+  from_name: string
+  received_at: string
+  message_count: number
+  has_attachments: boolean
+  code: string | null
+}
+
+export interface ThreadQueryOptions {
+  limit?: number
+  offset?: number
+}
+
+export type ExtractionType = 'order' | 'shipping' | 'calendar' | 'receipt' | 'code'
+
+export interface ExtractionResult {
+  type: ExtractionType
+  [key: string]: unknown
 }
 
 export interface SendOptions {
@@ -109,6 +137,7 @@ export interface EmailQueryOptions {
   limit?: number
   offset?: number
   direction?: 'inbound' | 'outbound'
+  label?: string
 }
 
 export interface EmailSearchOptions extends EmailQueryOptions {
@@ -128,4 +157,6 @@ export interface StorageProvider {
     timeout?: number
     since?: string
   }): Promise<{ code: string; from: string; subject: string } | null>
+  getThreads?(mailbox: string, options?: ThreadQueryOptions): Promise<EmailThread[]>
+  getThread?(threadId: string): Promise<Email[]>
 }

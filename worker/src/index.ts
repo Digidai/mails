@@ -8,7 +8,11 @@ import { handleGetCode } from './handlers/code'
 import { handleGetEmail, handleDeleteEmail } from './handlers/email'
 import { handleSend, parseFromName } from './handlers/send'
 import { handleGetAttachment } from './handlers/attachment'
+import { handleGetThreads, handleGetThread } from './handlers/threads'
+import { handleExtract } from './handlers/extract'
 import { fireWebhook, getWebhookUrl } from './handlers/webhook'
+import { resolveThreadId } from './threading'
+import { detectLabels } from './auto-label'
 
 export type { Env } from './types'
 
@@ -81,6 +85,19 @@ export default {
               case '/api/attachment':
                 response = await handleGetAttachment(url, env, mailbox)
                 break
+              case '/api/threads':
+                response = await handleGetThreads(url, env, mailbox)
+                break
+              case '/api/thread':
+                response = await handleGetThread(url, env, mailbox)
+                break
+              case '/api/extract':
+                if (request.method !== 'POST') {
+                  response = Response.json({ error: 'Method not allowed' }, { status: 405 })
+                  break
+                }
+                response = await handleExtract(request, url, env, mailbox)
+                break
               default:
                 response = Response.json({ error: 'Not found' }, { status: 404 })
             }
@@ -117,6 +134,12 @@ export default {
       const code = extractCode(`${subject} ${parsed.bodyText}`)
       const fromName = parseFromName(message.headers.get('from') ?? from)
 
+      // Threading: resolve thread_id from In-Reply-To / References headers
+      const threadId = await resolveThreadId(parsed.inReplyTo, parsed.references, parsed.messageId, env.DB, to)
+
+      // Auto-labeling
+      const labels = detectLabels(from, parsed.headers, code)
+
       // Upload large attachments to R2
       for (const att of parsed.attachments) {
         if (att.raw_content && att.size_bytes && att.size_bytes > R2_UPLOAD_THRESHOLD && env.ATTACHMENTS) {
@@ -137,10 +160,11 @@ export default {
           INSERT INTO emails (
             id, mailbox, from_address, from_name, to_address, subject,
             body_text, body_html, code, headers, metadata, message_id,
+            thread_id, in_reply_to, "references",
             has_attachments, attachment_count, attachment_names, attachment_search_text,
             raw_storage_key, direction, status, received_at, created_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'inbound', 'received', ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'inbound', 'received', ?, ?)
         `).bind(
           id, to, from, fromName, to, subject,
           parsed.bodyText.slice(0, 50000),
@@ -149,6 +173,9 @@ export default {
           JSON.stringify(parsed.headers),
           JSON.stringify({}),
           parsed.messageId,
+          threadId,
+          parsed.inReplyTo,
+          parsed.references,
           parsed.attachmentCount > 0 ? 1 : 0,
           parsed.attachmentCount,
           parsed.attachmentNames,
@@ -175,7 +202,22 @@ export default {
       ]
 
       await env.DB.batch(statements)
-      console.log(`Email received id=${id} to=${to} from=${from} subject="${subject.slice(0, 50)}" attachments=${parsed.attachmentCount}`)
+      console.log(`Email received id=${id} to=${to} from=${from} subject="${subject.slice(0, 50)}" thread=${threadId.slice(0, 8)} labels=${labels.join(',')} attachments=${parsed.attachmentCount}`)
+
+      // Insert auto-labels (separate batch — label failure should not block email storage)
+      if (labels.length > 0) {
+        try {
+          await env.DB.batch(
+            labels.map((label) =>
+              env.DB.prepare(
+                'INSERT INTO email_labels (id, email_id, label, source, created_at) VALUES (?, ?, ?, ?, ?)'
+              ).bind(crypto.randomUUID(), id, label, 'auto', now)
+            )
+          )
+        } catch (err) {
+          console.error(`Label insertion failed for email ${id}:`, err)
+        }
+      }
 
       // Fire webhook (non-blocking via waitUntil)
       const webhookUrl = await getWebhookUrl(env, to)
@@ -188,6 +230,8 @@ export default {
           subject,
           received_at: now,
           message_id: parsed.messageId,
+          thread_id: threadId,
+          labels,
           has_attachments: parsed.attachmentCount > 0,
           attachment_count: parsed.attachmentCount,
         }, webhookUrl))

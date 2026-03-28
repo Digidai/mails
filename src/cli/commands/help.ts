@@ -31,6 +31,8 @@ Inbox:
   mails inbox --mailbox <address>       List emails for a specific mailbox
   mails inbox --query "reset password"  Search emails in a mailbox
   mails inbox --query "invoice" --direction inbound --limit 10
+  mails inbox --threads                 List email threads
+  mails inbox --label notification      Filter by label (newsletter, notification, code, personal)
   mails inbox <id>                      Show email details
 
 Code:

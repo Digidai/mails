@@ -11,6 +11,9 @@ CREATE TABLE IF NOT EXISTS emails (
   headers TEXT DEFAULT '{}',
   metadata TEXT DEFAULT '{}',
   message_id TEXT,
+  thread_id TEXT,
+  in_reply_to TEXT,
+  "references" TEXT,
   has_attachments INTEGER NOT NULL DEFAULT 0,
   attachment_count INTEGER NOT NULL DEFAULT 0,
   attachment_names TEXT DEFAULT '',
@@ -41,6 +44,7 @@ CREATE INDEX IF NOT EXISTS idx_emails_mailbox ON emails(mailbox, received_at DES
 CREATE INDEX IF NOT EXISTS idx_emails_code ON emails(mailbox) WHERE code IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_emails_direction ON emails(direction);
 CREATE INDEX IF NOT EXISTS idx_emails_has_attachments ON emails(mailbox, has_attachments, received_at DESC);
+CREATE INDEX IF NOT EXISTS idx_emails_thread_id ON emails(thread_id, received_at DESC);
 CREATE INDEX IF NOT EXISTS idx_attachments_email_id ON attachments(email_id);
 CREATE INDEX IF NOT EXISTS idx_attachments_filename ON attachments(filename);
 
@@ -96,3 +100,16 @@ CREATE TABLE IF NOT EXISTS claim_sessions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_claim_sessions_status ON claim_sessions(status, expires_at);
+
+-- Email labels for auto-classification
+CREATE TABLE IF NOT EXISTS email_labels (
+  id TEXT PRIMARY KEY,
+  email_id TEXT NOT NULL,
+  label TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'auto',
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_labels_email_id ON email_labels(email_id);
+CREATE INDEX IF NOT EXISTS idx_email_labels_label ON email_labels(label, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_email_labels_unique ON email_labels(email_id, label);

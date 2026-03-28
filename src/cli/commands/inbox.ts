@@ -1,4 +1,4 @@
-import { getInbox, searchInbox, getEmail } from '../../core/receive.js'
+import { getInbox, searchInbox, getEmail, getThreads } from '../../core/receive.js'
 import { loadConfig } from '../../core/config.js'
 
 function parseArgs(args: string[]): Record<string, string> {
@@ -11,6 +11,8 @@ function parseArgs(args: string[]): Record<string, string> {
       if (value && !value.startsWith('--')) {
         result[key] = value
         i++
+      } else {
+        result[key] = 'true' // boolean flag (e.g. --threads)
       }
     } else if (!result._positional) {
       result._positional = arg
@@ -56,14 +58,30 @@ export async function inboxCommand(args: string[]) {
   }
 
   const limit = opts.limit ? (parseInt(opts.limit, 10) || 20) : 20
+
+  // mails inbox --threads — list threads
+  if (opts.threads) {
+    const threads = await getThreads(mailbox, { limit })
+    if (threads.length === 0) {
+      console.log('No threads found.')
+      return
+    }
+    for (const thread of threads) {
+      const from = thread.from_name || thread.from_address
+      console.log(`${thread.thread_id.slice(0, 8)}  [${thread.message_count}]  ${thread.received_at.slice(0, 16)}  ${from.padEnd(24).slice(0, 24)}  ${thread.subject.slice(0, 40)}`)
+    }
+    return
+  }
+
   const direction = opts.direction === 'inbound' || opts.direction === 'outbound'
     ? opts.direction
     : undefined
   const query = opts.query?.trim()
+  const label = opts.label?.trim()
 
   const emails = query
     ? await searchInbox(mailbox, { query, direction, limit })
-    : await getInbox(mailbox, { limit, direction })
+    : await getInbox(mailbox, { limit, direction, ...(label ? { label } : {}) })
 
   if (emails.length === 0) {
     console.log(query ? `No emails found for query: ${query}` : 'No emails found.')

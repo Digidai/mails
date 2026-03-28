@@ -19,6 +19,8 @@ export interface ParsedIncomingEmail {
   bodyHtml: string
   headers: Record<string, string>
   messageId: string | null
+  inReplyTo: string | null
+  references: string | null
   attachmentCount: number
   attachmentNames: string
   attachmentSearchText: string
@@ -42,6 +44,8 @@ export async function parseIncomingEmail(
     bodyHtml: parsed.html ?? '',
     headers: headersToRecord(parsed.headers),
     messageId: parsed.messageId ?? null,
+    inReplyTo: parsed.inReplyTo ?? null,
+    references: parsed.references ?? null,
     attachmentCount: attachments.length,
     attachmentNames: attachments.map((attachment) => attachment.filename).join(' '),
     attachmentSearchText: attachments
