@@ -364,7 +364,7 @@ bun test:coverage     # 含覆盖率报告
 bun test:live         # 真实 E2E（需要 .env 配置 Resend key）
 ```
 
-231 个测试，分布在 20 个测试文件中。
+231 个测试，分布在 21 个测试文件中。
 
 </details>
 
@@ -388,10 +388,19 @@ bun test:live         # 真实 E2E（需要 .env 配置 Resend key）
 | 项目 | 是什么 | 谁使用 |
 |---|---|---|
 | **[mails](https://github.com/Digidai/mails)**（本仓库） | 邮件服务（Worker）+ CLI + SDK | 部署邮件基础设施的开发者 |
+| **[mails-agent-mcp](https://github.com/Digidai/mails-mcp)** | AI Agent 用 MCP Server | Claude Desktop、Cursor 及任何 MCP 客户端 |
+| **[mails-agent (Python)](https://github.com/Digidai/mails-python)** | Python SDK | Python 开发者、异步 Agent |
 | **[mails-skills](https://github.com/Digidai/mails-skills)** | AI Agent 技能文件 | AI Agents（Claude Code、OpenClaw、Cursor） |
 
 **快速集成 Agent：**
 ```bash
+# MCP Server（Claude Desktop / Cursor）
+npm install -g mails-agent-mcp
+
+# Python SDK
+pip install mails-agent
+
+# Agent Skills
 git clone https://github.com/Digidai/mails-skills && cd mails-skills && ./install.sh
 ```
 

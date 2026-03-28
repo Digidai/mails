@@ -364,7 +364,7 @@ bun test:coverage     # カバレッジレポート付き
 bun test:live         # リアルE2E（.envにResendキーが必要）
 ```
 
-231テスト、20テストファイル。
+231テスト、21テストファイル。
 
 </details>
 
@@ -388,10 +388,19 @@ bun test:live         # リアルE2E（.envにResendキーが必要）
 | プロジェクト | 概要 | 対象 |
 |---|---|---|
 | **[mails](https://github.com/Digidai/mails)**（このリポジトリ） | メールサーバー（Worker）+ CLI + SDK | メールインフラをデプロイする開発者 |
+| **[mails-agent-mcp](https://github.com/Digidai/mails-mcp)** | AIエージェント向けMCPサーバー | Claude Desktop、Cursor、任意のMCPクライアント |
+| **[mails-agent (Python)](https://github.com/Digidai/mails-python)** | Python SDK | Python開発者、非同期エージェント |
 | **[mails-skills](https://github.com/Digidai/mails-skills)** | AIエージェント向けスキルファイル | AIエージェント（Claude Code、OpenClaw、Cursor） |
 
 **Agent連携クイックセットアップ：**
 ```bash
+# MCPサーバー（Claude Desktop / Cursor）
+npm install -g mails-agent-mcp
+
+# Python SDK
+pip install mails-agent
+
+# Agent Skills
 git clone https://github.com/Digidai/mails-skills && cd mails-skills && ./install.sh
 ```
 

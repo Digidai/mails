@@ -364,7 +364,7 @@ bun test:coverage     # With coverage report
 bun test:live         # Live E2E with real Resend + Cloudflare (requires .env)
 ```
 
-231 tests across 20 test files.
+231 tests across 21 test files.
 
 </details>
 
