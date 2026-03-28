@@ -20,6 +20,9 @@
 - **接收邮件** — 通过 Cloudflare Email Routing → Worker → D1
 - **搜索收件箱** — FTS5 全文搜索，涵盖主题、正文、发件人、验证码
 - **验证码自动提取** — 自动从邮件中提取 4-8 位验证码（支持中/英/日/韩）
+- **邮件会话** — 通过 In-Reply-To / References 头自动分配 `thread_id`
+- **自动标签** — 基于规则的分类：newsletter、notification、code、personal
+- **结构化数据提取** — 从邮件中提取订单、物流、日历、收据信息（基于规则，无需 LLM）
 - **附件** — CLI `--attach` 或 SDK 发送；接收时大附件自动存入 R2
 - **Webhook 通知** — 收件时 POST 到你的 URL，带 HMAC-SHA256 签名
 - **邮箱隔离** — 通过 `auth_tokens` D1 表实现按 token 绑定邮箱
@@ -335,6 +338,9 @@ mails inbox
 | `GET /api/email?id=<id>` | 邮件详情（含附件） |
 | `DELETE /api/email?id=<id>` | 删除邮件（含附件及 R2 对象） |
 | `GET /api/attachment?id=<id>` | 下载附件 |
+| `GET /api/threads?to=<addr>` | 会话列表 |
+| `GET /api/thread?id=<id>&to=<addr>` | 获取会话中所有邮件 |
+| `POST /api/extract` | 提取结构化数据（订单、物流、日历、收据、验证码） |
 | `GET /api/me` | Worker 信息和能力 |
 | `GET /health` | 健康检查（无需鉴权） |
 
@@ -358,7 +364,7 @@ bun test:coverage     # 含覆盖率报告
 bun test:live         # 真实 E2E（需要 .env 配置 Resend key）
 ```
 
-187 个测试，分布在 20 个测试文件中。
+231 个测试，分布在 20 个测试文件中。
 
 </details>
 
@@ -395,7 +401,7 @@ git clone https://github.com/Digidai/mails-skills && cd mails-skills && ./instal
 
 ## 致谢
 
-本项目基于 [mails](https://github.com/chekusu/mails)（作者 [turing](https://github.com/guo-yu)）开发。我们在此基础上新增了 mailbox 隔离、webhook 通知、删除 API、R2 附件存储、Worker 文件重构和全面的测试覆盖（187 个测试）。感谢原作者奠定的优秀基础。
+本项目基于 [mails](https://github.com/chekusu/mails)（作者 [turing](https://github.com/guo-yu)）开发。我们在此基础上新增了 mailbox 隔离、webhook 通知、删除 API、R2 附件存储、Worker 文件重构和全面的测试覆盖（231 个测试）。感谢原作者奠定的优秀基础。
 
 ## 许可证
 

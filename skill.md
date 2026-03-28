@@ -2,7 +2,7 @@
 
 You can send emails, receive emails, search your inbox, and extract verification codes. Deploy on your own domain with Cloudflare (free tier). Full control, no third-party dependency.
 
-**Capabilities:** send (with attachments), receive, inbox search (FTS5), verification code extraction (EN/ZH/JA/KO), email deletion, webhook notifications.
+**Capabilities:** send (with attachments), receive, inbox search (FTS5), verification code extraction (EN/ZH/JA/KO), email deletion, webhook notifications, email threading, auto labels (newsletter/notification/code/personal), structured data extraction (orders, shipping, calendar, receipts).
 
 ## Onboarding (follow these steps in order)
 
@@ -117,6 +117,8 @@ mails inbox                                  # List recent emails
 mails inbox --mailbox agent@yourdomain.com   # Specify mailbox
 mails inbox --query "password reset"         # Search emails
 mails inbox --query "invoice" --direction inbound --limit 10
+mails inbox --label notification             # Filter by label
+mails inbox --threads                        # List conversation threads
 mails inbox <email-id>                       # Show full email details (with attachments)
 ```
 
@@ -222,7 +224,11 @@ Worker API endpoints:
 | `GET /api/code?to=<addr>&timeout=30` | Long-poll for verification code |
 | `GET /api/email?id=<id>` | Get email by ID (with attachments) |
 | `DELETE /api/email?id=<id>` | Delete email (and its attachments + R2 objects) |
+| `GET /api/inbox?to=<addr>&label=<label>` | Filter emails by label (newsletter, notification, code, personal) |
 | `GET /api/attachment?id=<id>` | Download attachment |
+| `GET /api/threads?to=<addr>` | List conversation threads |
+| `GET /api/thread?id=<id>&to=<addr>` | Get all emails in a thread |
+| `POST /api/extract` | Extract structured data (order, shipping, calendar, receipt, code) |
 | `GET /api/me` | Worker info and capabilities |
 | `GET /health` | Health check (always public, no auth) |
 

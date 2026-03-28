@@ -20,6 +20,9 @@ AIエージェント向けのメールインフラ。送信、受信、検索、
 - **メール受信** — Cloudflare Email Routing → Worker → D1 経由
 - **受信箱検索** — FTS5全文検索（件名、本文、送信者、認証コード）
 - **認証コード自動抽出** — メールから4-8桁のコードを自動検出（英/中/日/韓対応）
+- **メールスレッド** — In-Reply-To / References ヘッダーから `thread_id` を自動付与
+- **自動ラベル** — ルールベースの分類: newsletter, notification, code, personal
+- **構造化データ抽出** — 注文、配送、カレンダー、レシート情報をメールから抽出（ルールベース、LLM不要）
 - **添付ファイル** — CLI `--attach` またはSDKで送信、受信時に大きなファイルはR2に自動保存
 - **Webhook通知** — メール受信時にURLへPOST、HMAC-SHA256署名付き
 - **メールボックス分離** — `auth_tokens` D1テーブルによるトークン別メールボックスバインディング
@@ -335,6 +338,9 @@ mails inbox
 | `GET /api/email?id=<id>` | メール詳細（添付ファイル含む） |
 | `DELETE /api/email?id=<id>` | メール削除（添付ファイル・R2オブジェクト含む） |
 | `GET /api/attachment?id=<id>` | 添付ファイルダウンロード |
+| `GET /api/threads?to=<addr>` | スレッド一覧 |
+| `GET /api/thread?id=<id>&to=<addr>` | スレッド内の全メール取得 |
+| `POST /api/extract` | 構造化データ抽出（注文、配送、カレンダー、レシート、認証コード） |
 | `GET /api/me` | Worker情報と機能 |
 | `GET /health` | ヘルスチェック（認証不要） |
 
@@ -358,7 +364,7 @@ bun test:coverage     # カバレッジレポート付き
 bun test:live         # リアルE2E（.envにResendキーが必要）
 ```
 
-187テスト、20テストファイル。
+231テスト、20テストファイル。
 
 </details>
 
@@ -395,7 +401,7 @@ git clone https://github.com/Digidai/mails-skills && cd mails-skills && ./instal
 
 ## 謝辞
 
-このプロジェクトは [turing](https://github.com/guo-yu) 氏の [mails](https://github.com/chekusu/mails) をベースに開発されています。メールボックス分離、Webhook通知、削除API、R2添付ファイルストレージ、Workerファイルリファクタリング、包括的なテストカバレッジ（187テスト）を追加しました。優れた基盤を築いてくれたオリジナル作者に感謝します。
+このプロジェクトは [turing](https://github.com/guo-yu) 氏の [mails](https://github.com/chekusu/mails) をベースに開発されています。メールボックス分離、Webhook通知、削除API、R2添付ファイルストレージ、Workerファイルリファクタリング、包括的なテストカバレッジ（231テスト）を追加しました。優れた基盤を築いてくれたオリジナル作者に感謝します。
 
 ## ライセンス
 

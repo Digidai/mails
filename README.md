@@ -20,6 +20,9 @@ Unlike raw email APIs that only send, mails gives your agent a complete email id
 - **Receive emails** — via Cloudflare Email Routing → Worker → D1
 - **Search inbox** — FTS5 full-text search across subject, body, sender, code
 - **Verification code extraction** — auto-extracts 4-8 char codes (EN/ZH/JA/KO)
+- **Email threading** — auto-assign `thread_id` via In-Reply-To / References headers
+- **Auto labels** — rule-based classification: newsletter, notification, code, personal
+- **Structured data extraction** — extract orders, shipping, calendar, receipts from emails (rule-based, no LLM)
 - **Attachments** — send via CLI (`--attach`) or SDK; receive with R2 storage for large files
 - **Webhook notifications** — POST to your URL on email receive, with HMAC-SHA256 signature
 - **Mailbox isolation** — per-token mailbox binding via `auth_tokens` D1 table
@@ -335,6 +338,9 @@ Your Agent                              External sender
 | `GET /api/email?id=<id>` | Get email by ID (with attachments) |
 | `DELETE /api/email?id=<id>` | Delete email (and its attachments + R2 objects) |
 | `GET /api/attachment?id=<id>` | Download attachment |
+| `GET /api/threads?to=<addr>` | List conversation threads |
+| `GET /api/thread?id=<id>&to=<addr>` | Get all emails in a thread |
+| `POST /api/extract` | Extract structured data (order, shipping, calendar, receipt, code) |
 | `GET /api/me` | Worker info and capabilities |
 | `GET /health` | Health check (always public, no auth) |
 
@@ -358,7 +364,7 @@ bun test:coverage     # With coverage report
 bun test:live         # Live E2E with real Resend + Cloudflare (requires .env)
 ```
 
-187 tests across 20 test files.
+231 tests across 20 test files.
 
 </details>
 
@@ -405,7 +411,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, project structure,
 
 ## Acknowledgments
 
-This project is based on [mails](https://github.com/chekusu/mails) by [turing](https://github.com/guo-yu), originally created as email infrastructure for AI agents. We forked and extended it with mailbox isolation, webhook notifications, delete API, R2 attachment storage, Worker file refactoring, and comprehensive test coverage (187 tests). Thank you to the original author for the excellent foundation.
+This project is based on [mails](https://github.com/chekusu/mails) by [turing](https://github.com/guo-yu), originally created as email infrastructure for AI agents. We forked and extended it with mailbox isolation, webhook notifications, delete API, R2 attachment storage, Worker file refactoring, and comprehensive test coverage (231 tests). Thank you to the original author for the excellent foundation.
 
 ## License
 
