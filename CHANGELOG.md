@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.0] - 2026-03-28
+
+### Added
+- **Email Threads** — auto-assign `thread_id` by parsing In-Reply-To / References headers
+  - `GET /api/threads` — list threads with latest message preview and count
+  - `GET /api/thread?id=` — all emails in a thread (chronological)
+  - CLI: `mails inbox --threads`
+  - SDK: `getThreads()`, `getThread()`
+- **Auto Labels** — rule-based classification on email receive
+  - `newsletter` (List-Unsubscribe/List-Id), `notification` (noreply/alerts), `code` (verification code), `personal` (default)
+  - `GET /api/inbox?label=` — filter by label
+  - CLI: `mails inbox --label notification`
+  - New `email_labels` D1 table with unique constraint
+- **Structured Data Extraction** — rule-based, no LLM required
+  - `POST /api/extract` — extract order, shipping, calendar, receipt, or code data
+  - Supports UPS/FedEx/USPS/DHL tracking numbers, ICS calendar parsing, currency amounts
+- **Schema migration** — `worker/migrations/0001-threads-and-labels.sql`
+- **47 new tests** (threading: 11, labels: 17, extraction: 19) — total 231
+
+### Security
+- Case-insensitive header lookup for auto-labeling (postal-mime preserves original casing)
+- Mandatory mailbox scoping on thread endpoints
+- INSERT OR IGNORE for label idempotency
+- Verified email.id for attachment queries in extract handler
+
+### Performance
+- Batch IN query for References chain (was N+1)
+- CTE-based threads SQL (was nested correlated subqueries)
+
 ## [1.3.0] - 2026-03-26
 
 ### Added
