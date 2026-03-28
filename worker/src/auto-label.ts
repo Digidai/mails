@@ -6,6 +6,16 @@
 const NOREPLY_PATTERN = /^no[-_.]?reply@/i
 const NOTIFICATION_SENDERS = /^(notifications?|alerts?|mailer-daemon|bounce)@/i
 
+// Case-insensitive header lookup — postal-mime preserves original casing
+// (e.g. "List-Unsubscribe" vs "list-unsubscribe"), so we must normalize.
+function getHeader(headers: Record<string, string>, name: string): string | undefined {
+  const lower = name.toLowerCase()
+  for (const key of Object.keys(headers)) {
+    if (key.toLowerCase() === lower) return headers[key]
+  }
+  return undefined
+}
+
 export function detectLabels(
   fromAddress: string,
   headers: Record<string, string>,
@@ -14,7 +24,7 @@ export function detectLabels(
   const labels: string[] = []
 
   // Newsletter: has List-Unsubscribe or List-Id header
-  if (headers['List-Unsubscribe'] || headers['List-Id']) {
+  if (getHeader(headers, 'List-Unsubscribe') || getHeader(headers, 'List-Id')) {
     labels.push('newsletter')
   }
 

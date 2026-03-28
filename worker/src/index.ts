@@ -210,7 +210,7 @@ export default {
           await env.DB.batch(
             labels.map((label) =>
               env.DB.prepare(
-                'INSERT INTO email_labels (id, email_id, label, source, created_at) VALUES (?, ?, ?, ?, ?)'
+                'INSERT OR IGNORE INTO email_labels (id, email_id, label, source, created_at) VALUES (?, ?, ?, ?, ?)'
               ).bind(crypto.randomUUID(), id, label, 'auto', now)
             )
           )

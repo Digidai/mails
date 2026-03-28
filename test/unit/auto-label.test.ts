@@ -62,4 +62,34 @@ describe('detectLabels', () => {
     const labels = detectLabels('bob@company.com', { 'Subject': 'Hello' }, null)
     expect(labels).toEqual(['personal'])
   })
+
+  test('detects newsletter with lowercase list-unsubscribe header', () => {
+    const labels = detectLabels('news@company.com', { 'list-unsubscribe': '<mailto:unsub@company.com>' }, null)
+    expect(labels).toContain('newsletter')
+  })
+
+  test('detects newsletter with mixed-case LIST-UNSUBSCRIBE header', () => {
+    const labels = detectLabels('news@company.com', { 'LIST-UNSUBSCRIBE': '<mailto:unsub@company.com>' }, null)
+    expect(labels).toContain('newsletter')
+  })
+
+  test('detects newsletter with lowercase list-id header', () => {
+    const labels = detectLabels('news@company.com', { 'list-id': '<list.company.com>' }, null)
+    expect(labels).toContain('newsletter')
+  })
+
+  test('returns notification for no.reply@ sender', () => {
+    const labels = detectLabels('no.reply@service.com', {}, null)
+    expect(labels).toContain('notification')
+  })
+
+  test('returns notification for mailer-daemon@ sender', () => {
+    const labels = detectLabels('mailer-daemon@example.com', {}, null)
+    expect(labels).toContain('notification')
+  })
+
+  test('returns notification for bounce@ sender', () => {
+    const labels = detectLabels('bounce@example.com', {}, null)
+    expect(labels).toContain('notification')
+  })
 })

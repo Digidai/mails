@@ -133,6 +133,59 @@ describe('extractStructuredData', () => {
       }
     })
 
+    test('parses ICS with DTSTART containing TZID parameter', () => {
+      const ics = [
+        'BEGIN:VCALENDAR',
+        'BEGIN:VEVENT',
+        'SUMMARY:Sprint Planning',
+        'DTSTART;TZID=America/New_York:20260401T100000',
+        'DTEND;TZID=America/New_York:20260401T110000',
+        'LOCATION:Zoom',
+        'END:VEVENT',
+        'END:VCALENDAR',
+      ].join('\r\n')
+
+      const result = extractStructuredData(
+        'calendar',
+        'Meeting invite',
+        'You have been invited',
+        'calendar@company.com',
+        'Company',
+        [{ content_type: 'text/calendar', text_content: ics }]
+      )
+      if (result.type === 'calendar') {
+        expect(result.title).toBe('Sprint Planning')
+        expect(result.date).toBe('2026-04-01')
+        expect(result.time).toBe('10:00')
+        expect(result.location).toBe('Zoom')
+      }
+    })
+
+    test('parses ICS with all-day event (DTSTART without time)', () => {
+      const ics = [
+        'BEGIN:VCALENDAR',
+        'BEGIN:VEVENT',
+        'SUMMARY:Company Holiday',
+        'DTSTART;VALUE=DATE:20260401',
+        'END:VEVENT',
+        'END:VCALENDAR',
+      ].join('\r\n')
+
+      const result = extractStructuredData(
+        'calendar',
+        'Holiday',
+        '',
+        'calendar@company.com',
+        'Company',
+        [{ content_type: 'text/calendar', text_content: ics }]
+      )
+      if (result.type === 'calendar') {
+        expect(result.title).toBe('Company Holiday')
+        expect(result.date).toBe('2026-04-01')
+        expect(result.time).toBeNull()
+      }
+    })
+
     test('extracts from body text when no ICS', () => {
       const result = extractStructuredData(
         'calendar',
@@ -211,6 +264,82 @@ describe('extractStructuredData', () => {
       )
       if (result.type === 'code') {
         expect(result.code).toBeNull()
+      }
+    })
+  })
+
+  describe('edge cases', () => {
+    test('handles empty subject without crashing', () => {
+      const result = extractStructuredData(
+        'order',
+        '',
+        'Order #TEST-123\nTotal: $10.00',
+        'shop@store.com',
+        'Shop',
+        []
+      )
+      expect(result.type).toBe('order')
+      if (result.type === 'order') {
+        expect(result.order_id).toBe('TEST-123')
+      }
+    })
+
+    test('receipt with empty fromName falls back to from address local part', () => {
+      const result = extractStructuredData(
+        'receipt',
+        'Receipt',
+        'Amount: $25.00',
+        'billing@acme.com',
+        '',
+        []
+      )
+      if (result.type === 'receipt') {
+        expect(result.merchant).toBe('billing')
+      }
+    })
+
+    test('order with empty fromName falls back to from address local part', () => {
+      const result = extractStructuredData(
+        'order',
+        'Order #X1234',
+        'Total: $10.00',
+        'orders@shop.com',
+        '',
+        []
+      )
+      if (result.type === 'order') {
+        expect(result.merchant).toBe('orders')
+      }
+    })
+
+    test('calendar with empty attachments array does not crash', () => {
+      const result = extractStructuredData(
+        'calendar',
+        'Meeting',
+        'Event: Standup\nDate: April 1, 2026',
+        'cal@company.com',
+        'Company',
+        []
+      )
+      expect(result.type).toBe('calendar')
+      if (result.type === 'calendar') {
+        expect(result.date).toBe('April 1, 2026')
+      }
+    })
+
+    test('shipping extraction with empty body does not crash', () => {
+      const result = extractStructuredData(
+        'shipping',
+        'Shipped',
+        '',
+        'noreply@shop.com',
+        'Shop',
+        []
+      )
+      expect(result.type).toBe('shipping')
+      if (result.type === 'shipping') {
+        expect(result.tracking_number).toBeNull()
+        expect(result.status).toBe('shipped')
       }
     })
   })

@@ -8,6 +8,8 @@ interface WebhookPayload {
   subject: string
   received_at: string
   message_id: string | null
+  thread_id: string
+  labels: string[]
   has_attachments: boolean
   attachment_count: number
 }

@@ -102,7 +102,7 @@ function extractOrder(text: string, fromName: string, fromAddress: string): Orde
     order_id: orderIdMatch?.[1] ?? null,
     total: totalMatch?.[1]?.replace(/,/g, '') ?? null,
     currency: normalizeCurrency(currencyMatch?.[0] ?? null),
-    merchant: fromName || fromAddress.split('@')[0],
+    merchant: fromName?.trim() || fromAddress.split('@')[0] || null,
     items: [],
   }
 }
@@ -248,7 +248,7 @@ function extractReceipt(text: string, subject: string, fromName: string, fromAdd
 
   return {
     type: 'receipt',
-    merchant: fromName || fromAddress.split('@')[0],
+    merchant: fromName?.trim() || fromAddress.split('@')[0] || null,
     amount: amountMatch?.[1]?.replace(/,/g, '') ?? amountMatch?.[2]?.replace(/,/g, '') ?? null,
     currency: normalizeCurrency(currencyMatch?.[0] ?? null),
     date: dateMatch?.[1]?.trim() ?? null,

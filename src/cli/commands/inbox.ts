@@ -80,7 +80,7 @@ export async function inboxCommand(args: string[]) {
   const label = opts.label?.trim()
 
   const emails = query
-    ? await searchInbox(mailbox, { query, direction, limit })
+    ? await searchInbox(mailbox, { query, direction, limit, ...(label ? { label } : {}) })
     : await getInbox(mailbox, { limit, direction, ...(label ? { label } : {}) })
 
   if (emails.length === 0) {

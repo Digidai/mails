@@ -39,17 +39,17 @@ export async function handleExtract(request: Request, url: URL, env: Env, mailbo
     return Response.json({ error: 'Email not found' }, { status: 404 })
   }
 
-  // Fetch attachments for calendar extraction
+  // Fetch attachments for calendar extraction (use verified email.id, not raw user input)
   const { results: attachments } = await env.DB.prepare(
     'SELECT content_type, text_content FROM attachments WHERE email_id = ?'
-  ).bind(email_id).all<{ content_type: string; text_content: string }>()
+  ).bind(email.id).all<{ content_type: string; text_content: string }>()
 
   const result = extractStructuredData(
     type as ExtractionType,
-    email.subject,
-    email.body_text,
+    email.subject ?? '',
+    email.body_text ?? '',
     email.from_address,
-    email.from_name,
+    email.from_name ?? '',
     attachments ?? []
   )
 
