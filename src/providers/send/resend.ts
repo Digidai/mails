@@ -35,17 +35,22 @@ export function createResendProvider(apiKey: string): SendProvider {
         }))
       }
 
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      })
+      let res: Response
+      try {
+        res = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        })
+      } catch (err) {
+        throw new Error(`Cannot connect to Resend API: ${err instanceof Error ? err.message : err}`)
+      }
 
       if (!res.ok) {
-        const err = await res.json() as ResendError
+        const err = await res.json().catch(() => ({ message: `HTTP ${res.status}` })) as ResendError
         throw new Error(`Resend error: ${err.message}`)
       }
 

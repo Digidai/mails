@@ -1,7 +1,7 @@
 import { setConfigValue } from '../../core/config.js'
 
 const API_BASE = process.env.MAILS_CLAIM_URL || 'https://mails0.com'
-const CLAIM_PAGE = process.env.MAILS_CLAIM_URL || 'https://mails0.com'
+const CLAIM_PAGE = process.env.MAILS_CLAIM_PAGE || process.env.MAILS_CLAIM_URL || 'https://mails0.com'
 const POLL_INTERVAL = 2000
 
 export async function claimCommand(args: string[]) {
@@ -14,11 +14,17 @@ export async function claimCommand(args: string[]) {
   }
 
   // 1. Create claim session
-  const startRes = await fetch(`${API_BASE}/v1/claim/start`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
-  })
+  let startRes: Response
+  try {
+    startRes = await fetch(`${API_BASE}/v1/claim/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+  } catch (err) {
+    console.error(`Cannot connect to ${API_BASE}: ${err instanceof Error ? err.message : err}`)
+    process.exit(1)
+  }
 
   const startData = await startRes.json() as {
     session_id?: string
@@ -68,7 +74,13 @@ export async function claimCommand(args: string[]) {
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, POLL_INTERVAL))
 
-    const pollRes = await fetch(`${API_BASE}/v1/claim/poll?session=${session_id}`)
+    let pollRes: Response
+    try {
+      pollRes = await fetch(`${API_BASE}/v1/claim/poll?session=${session_id}`)
+    } catch {
+      // Network error during poll — retry silently
+      continue
+    }
     const pollData = await pollRes.json() as {
       status: string
       mailbox?: string

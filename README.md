@@ -383,10 +383,19 @@ bun test:live         # Live E2E with real Resend + Cloudflare (requires .env)
 | Project | What it is | Who uses it |
 |---|---|---|
 | **[mails](https://github.com/Digidai/mails)** (this repo) | Email server (Worker) + CLI + SDK | Developers deploying email infra |
+| **[mails-agent-mcp](https://github.com/Digidai/mails-mcp)** | MCP Server for AI agents | Claude Desktop, Cursor, any MCP client |
+| **[mails-agent (Python)](https://github.com/Digidai/mails-python)** | Python SDK | Python developers, async agents |
 | **[mails-skills](https://github.com/Digidai/mails-skills)** | Skill files for AI agents | AI agents (Claude Code, OpenClaw, Cursor) |
 
 **Quick agent setup:**
 ```bash
+# MCP Server (Claude Desktop / Cursor)
+npm install -g mails-agent-mcp
+
+# Python SDK
+pip install mails-agent
+
+# Agent Skills
 git clone https://github.com/Digidai/mails-skills && cd mails-skills && ./install.sh
 ```
 

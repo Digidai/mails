@@ -2,6 +2,8 @@ import { describe, expect, test, mock, beforeEach } from 'bun:test'
 import { handleSend, extractEmail, parseFromName } from '../../worker/src/handlers/send'
 import { handleGetAttachment } from '../../worker/src/handlers/attachment'
 import { handleGetEmail, handleDeleteEmail } from '../../worker/src/handlers/email'
+import { handleInbox } from '../../worker/src/handlers/inbox'
+import { handleGetCode } from '../../worker/src/handlers/code'
 import { fireWebhook, getWebhookUrl } from '../../worker/src/handlers/webhook'
 import { resolveAuth, _resetAuthCache } from '../../worker/src/handlers/auth'
 import type { Env } from '../../worker/src/types'
@@ -1002,5 +1004,125 @@ describe('resolveAuth — no auth configured (public access)', () => {
     const result = await resolveAuth(req, env)
     expect(result).not.toBeNull()
     expect(result!.mailbox).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// handleInbox
+// ---------------------------------------------------------------------------
+
+describe('handleInbox', () => {
+  test('returns 400 when no mailbox specified (no ?to= and no mailbox arg)', async () => {
+    const env = makeEnv()
+    const url = new URL('https://worker.test/api/inbox')
+    const res = await handleInbox(url, env)
+    expect(res.status).toBe(400)
+    const data = await res.json() as { error: string }
+    expect(data.error).toContain('Missing ?to=')
+  })
+
+  test('returns emails for given mailbox via ?to= param', async () => {
+    const emailRows = [
+      { id: 'e1', mailbox: 'user@test.com', from_address: 's@test.com', from_name: 'S', subject: 'Hello', code: null, direction: 'inbound', status: 'received', received_at: '2026-01-01T00:00:00Z', has_attachments: 0, attachment_count: 0 },
+    ]
+    const stmt = mockStatement(null, emailRows)
+    const db = mockDB(() => stmt)
+    const env = makeEnv({ DB: db })
+    const url = new URL('https://worker.test/api/inbox?to=user@test.com')
+    const res = await handleInbox(url, env)
+    expect(res.status).toBe(200)
+    const data = await res.json() as { emails: any[] }
+    expect(data.emails).toHaveLength(1)
+    expect(data.emails[0].id).toBe('e1')
+    expect(data.emails[0].has_attachments).toBe(false) // converted from 0 to boolean
+  })
+
+  test('uses mailbox argument when provided (overrides ?to=)', async () => {
+    const stmt = mockStatement(null, [])
+    const db = mockDB(() => stmt)
+    const env = makeEnv({ DB: db })
+    const url = new URL('https://worker.test/api/inbox?to=ignored@test.com')
+    const res = await handleInbox(url, env, 'actual@mailbox.com')
+    expect(res.status).toBe(200)
+    // Verify the mailbox used in bind is the argument, not the ?to= param
+    expect(stmt.bind).toHaveBeenCalled()
+    const bindArgs = (stmt.bind as any).mock.calls[0]
+    expect(bindArgs[0]).toBe('actual@mailbox.com')
+  })
+
+  test('respects limit and offset params', async () => {
+    const stmt = mockStatement(null, [])
+    const db = mockDB(() => stmt)
+    const env = makeEnv({ DB: db })
+    const url = new URL('https://worker.test/api/inbox?to=user@test.com&limit=5&offset=10')
+    const res = await handleInbox(url, env)
+    expect(res.status).toBe(200)
+    // limit=5, offset=10 should be passed to bind
+    const bindArgs = (stmt.bind as any).mock.calls[0]
+    expect(bindArgs).toContain(5)
+    expect(bindArgs).toContain(10)
+  })
+
+  test('caps limit at 100', async () => {
+    const stmt = mockStatement(null, [])
+    const db = mockDB(() => stmt)
+    const env = makeEnv({ DB: db })
+    const url = new URL('https://worker.test/api/inbox?to=user@test.com&limit=999')
+    const res = await handleInbox(url, env)
+    expect(res.status).toBe(200)
+    const bindArgs = (stmt.bind as any).mock.calls[0]
+    expect(bindArgs).toContain(100) // capped
+  })
+})
+
+// ---------------------------------------------------------------------------
+// handleGetCode
+// ---------------------------------------------------------------------------
+
+describe('handleGetCode', () => {
+  test('returns 400 when no mailbox specified', async () => {
+    const env = makeEnv()
+    const url = new URL('https://worker.test/api/code')
+    const res = await handleGetCode(url, env)
+    expect(res.status).toBe(400)
+    const data = await res.json() as { error: string }
+    expect(data.error).toContain('Missing ?to=')
+  })
+
+  test('returns code immediately when found', async () => {
+    const codeRow = { id: 'e1', code: '123456', from_address: 'noreply@service.com', subject: 'Your code', received_at: '2026-01-01T00:00:00Z' }
+    const stmt = mockStatement(codeRow)
+    const db = mockDB(() => stmt)
+    const env = makeEnv({ DB: db })
+    const url = new URL('https://worker.test/api/code?to=user@test.com&timeout=1')
+    const res = await handleGetCode(url, env)
+    expect(res.status).toBe(200)
+    const data = await res.json() as { code: string; from: string; subject: string }
+    expect(data.code).toBe('123456')
+    expect(data.from).toBe('noreply@service.com')
+    expect(data.subject).toBe('Your code')
+  })
+
+  test('returns null code when timeout expires with no code', async () => {
+    const stmt = mockStatement(null) // no code found
+    const db = mockDB(() => stmt)
+    const env = makeEnv({ DB: db })
+    const url = new URL('https://worker.test/api/code?to=user@test.com&timeout=1')
+    const res = await handleGetCode(url, env)
+    expect(res.status).toBe(200)
+    const data = await res.json() as { code: null }
+    expect(data.code).toBeNull()
+  }, 10000)
+
+  test('uses mailbox argument when provided', async () => {
+    const codeRow = { id: 'e1', code: '999', from_address: 'a@b.com', subject: 'Code', received_at: '2026-01-01T00:00:00Z' }
+    const stmt = mockStatement(codeRow)
+    const db = mockDB(() => stmt)
+    const env = makeEnv({ DB: db })
+    const url = new URL('https://worker.test/api/code?to=ignored@test.com&timeout=1')
+    const res = await handleGetCode(url, env, 'actual@mailbox.com')
+    expect(res.status).toBe(200)
+    const bindArgs = (stmt.bind as any).mock.calls[0]
+    expect(bindArgs[0]).toBe('actual@mailbox.com')
   })
 })

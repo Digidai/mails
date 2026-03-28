@@ -59,6 +59,14 @@ CREATE TRIGGER IF NOT EXISTS emails_fts_ai AFTER INSERT ON emails BEGIN
   VALUES (new.rowid, new.subject, new.from_name, new.from_address, new.body_text, new.code);
 END;
 
+-- Auto-sync FTS index on email update
+CREATE TRIGGER IF NOT EXISTS emails_fts_au AFTER UPDATE ON emails BEGIN
+  INSERT INTO emails_fts(emails_fts, rowid, subject, from_name, from_address, body_text, code)
+  VALUES ('delete', old.rowid, old.subject, old.from_name, old.from_address, old.body_text, old.code);
+  INSERT INTO emails_fts(rowid, subject, from_name, from_address, body_text, code)
+  VALUES (new.rowid, new.subject, new.from_name, new.from_address, new.body_text, new.code);
+END;
+
 -- Auto-sync FTS index on email delete
 CREATE TRIGGER IF NOT EXISTS emails_fts_ad AFTER DELETE ON emails BEGIN
   INSERT INTO emails_fts(emails_fts, rowid, subject, from_name, from_address, body_text, code)

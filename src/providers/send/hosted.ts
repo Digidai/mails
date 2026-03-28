@@ -29,14 +29,19 @@ export function createHostedSendProvider(apiKey: string, apiUrl?: string): SendP
         }))
       }
 
-      const res = await fetch(`${baseUrl}/v1/send`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      })
+      let res: Response
+      try {
+        res = await fetch(`${baseUrl}/v1/send`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        })
+      } catch (err) {
+        throw new Error(`Cannot connect to ${baseUrl}: ${err instanceof Error ? err.message : err}`)
+      }
 
       const data = await res.json().catch(() => ({})) as {
         id?: string
