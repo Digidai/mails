@@ -170,6 +170,8 @@ describe('CLI: inbox command', () => {
       getInbox: getInboxSpy,
       searchInbox: searchInboxSpy,
       getEmail: getEmailSpy,
+      getThreads: mock(async () => []),
+      getThread: mock(async () => []),
     }))
     mock.module('../../src/core/config.js', () => ({
       loadConfig: () => ({ mailbox: 'agent@test.com', send_provider: 'resend', storage_provider: 'sqlite' }),
@@ -201,6 +203,8 @@ describe('CLI: inbox command', () => {
       getInbox: getInboxSpy,
       searchInbox: searchInboxSpy,
       getEmail: mock(async () => null),
+      getThreads: mock(async () => []),
+      getThread: mock(async () => []),
     }))
     mock.module('../../src/core/config.js', () => ({
       loadConfig: () => ({ mailbox: 'agent@test.com', send_provider: 'resend', storage_provider: 'sqlite' }),
