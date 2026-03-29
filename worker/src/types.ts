@@ -1,6 +1,8 @@
 export interface Env {
   DB: D1Database
   ATTACHMENTS?: R2Bucket
+  AI?: Ai
+  VECTORIZE?: VectorizeIndex
   AUTH_TOKEN?: string
   AUTH_TOKENS?: string
   RESEND_API_KEY?: string

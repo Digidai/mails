@@ -79,8 +79,10 @@ export async function inboxCommand(args: string[]) {
   const query = opts.query?.trim()
   const label = opts.label?.trim()
 
+  const mode = opts.semantic ? 'semantic' as const : (opts.mode as 'keyword' | 'semantic' | 'hybrid' | undefined)
+
   const emails = query
-    ? await searchInbox(mailbox, { query, direction, limit, ...(label ? { label } : {}) })
+    ? await searchInbox(mailbox, { query, direction, limit, ...(label ? { label } : {}), ...(mode ? { mode } : {}) })
     : await getInbox(mailbox, { limit, direction, ...(label ? { label } : {}) })
 
   if (emails.length === 0) {

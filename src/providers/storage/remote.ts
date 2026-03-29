@@ -77,6 +77,7 @@ export function createRemoteProvider(options: RemoteProviderOptions): StoragePro
         offset: options.offset ?? 0,
         ...(options.direction ? { direction: options.direction } : {}),
         ...(options.label ? { label: options.label } : {}),
+        ...(options.mode ? { mode: options.mode } : {}),
       }))
       if (!res.ok) {
         const data = await res.json() as { error?: string }

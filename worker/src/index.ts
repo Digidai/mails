@@ -13,6 +13,7 @@ import { handleExtract } from './handlers/extract'
 import { fireWebhook, getWebhookUrl } from './handlers/webhook'
 import { resolveThreadId } from './threading'
 import { detectLabels } from './auto-label'
+import { generateAndStoreEmbedding } from './embeddings'
 
 export type { Env } from './types'
 
@@ -90,6 +91,16 @@ export default {
                 break
               case '/api/thread':
                 response = await handleGetThread(url, env, mailbox)
+                break
+              case '/api/search':
+                // Alias: ?q= → ?query=, default mode=hybrid
+                if (!url.searchParams.has('query') && url.searchParams.has('q')) {
+                  url.searchParams.set('query', url.searchParams.get('q')!)
+                }
+                if (!url.searchParams.has('mode')) {
+                  url.searchParams.set('mode', 'hybrid')
+                }
+                response = await handleInbox(url, env, mailbox)
                 break
               case '/api/extract':
                 if (request.method !== 'POST') {
@@ -236,6 +247,11 @@ export default {
           attachment_count: parsed.attachmentCount,
         }, webhookUrl))
       }
+
+      // Generate embedding for semantic search (non-blocking)
+      ctx.waitUntil(
+        generateAndStoreEmbedding(env, id, to, subject, fromName, parsed.bodyText)
+      )
     } catch (err) {
       console.error(`Email processing failed for id=${id} to=${to} from=${from}:`, err)
     }

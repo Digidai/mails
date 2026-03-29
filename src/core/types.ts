@@ -142,6 +142,7 @@ export interface EmailQueryOptions {
 
 export interface EmailSearchOptions extends EmailQueryOptions {
   query: string
+  mode?: 'keyword' | 'semantic' | 'hybrid'
 }
 
 export interface StorageProvider {

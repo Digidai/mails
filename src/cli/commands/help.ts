@@ -33,6 +33,8 @@ Inbox:
   mails inbox --query "invoice" --direction inbound --limit 10
   mails inbox --threads                 List email threads
   mails inbox --label notification      Filter by label (newsletter, notification, code, personal)
+  mails inbox --query "keyword" --semantic   Semantic search (requires Vectorize)
+  mails inbox --query "keyword" --mode hybrid  Hybrid search (FTS5 + semantic)
   mails inbox <id>                      Show email details
 
 Code:

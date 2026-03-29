@@ -11,6 +11,16 @@ database_id = "YOUR_D1_DATABASE_ID"
 binding = "ATTACHMENTS"
 bucket_name = "mails-attachments"
 
+# Workers AI (free tier, for generating embeddings)
+[ai]
+binding = "AI"
+
+# Vectorize index for semantic search (optional, beta)
+# Create once: wrangler vectorize create mails-embeddings --dimensions 768 --metric cosine
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "mails-embeddings"
+
 # Email Routing: receive emails via email() handler
 # The catch-all rule in Cloudflare Dashboard routes *@yourdomain.com → this Worker
 [triggers]
