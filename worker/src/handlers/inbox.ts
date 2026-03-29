@@ -10,7 +10,9 @@ export async function handleInbox(url: URL, env: Env, mailbox?: string): Promise
   const direction = url.searchParams.get('direction')
   const query = url.searchParams.get('query')?.trim()
   const label = url.searchParams.get('label')?.trim()
-  const mode = (url.searchParams.get('mode') ?? 'keyword') as 'keyword' | 'semantic' | 'hybrid'
+  const rawMode = url.searchParams.get('mode') ?? 'keyword'
+  const mode: 'keyword' | 'semantic' | 'hybrid' =
+    rawMode === 'semantic' || rawMode === 'hybrid' ? rawMode : 'keyword'
 
   // Semantic-only mode
   if (query && mode === 'semantic') {
@@ -69,6 +71,7 @@ async function handleKeywordSearch(
 
   return Response.json({
     emails: rows.results.map(formatEmailRow),
+    search_mode: 'keyword',
   })
 }
 

@@ -68,6 +68,30 @@ describe('generateAndStoreEmbedding', () => {
     expect(call[0][0].metadata).toEqual({ mailbox: 'agent@mails0.com' })
   })
 
+  test('returns silently when AI returns unexpected format (null data)', async () => {
+    const upsert = mock(async () => {})
+    const env = {
+      DB: {},
+      AI: { run: mock(async () => ({ data: null })) },
+      VECTORIZE: { upsert },
+    } as unknown as Env
+
+    await generateAndStoreEmbedding(env, 'id-1', 'test@mails0.com', 'Sub', 'From', 'Body')
+    expect(upsert).not.toHaveBeenCalled()
+  })
+
+  test('returns silently when AI returns empty data array', async () => {
+    const upsert = mock(async () => {})
+    const env = {
+      DB: {},
+      AI: { run: mock(async () => ({ data: [] })) },
+      VECTORIZE: { upsert },
+    } as unknown as Env
+
+    await generateAndStoreEmbedding(env, 'id-1', 'test@mails0.com', 'Sub', 'From', 'Body')
+    expect(upsert).not.toHaveBeenCalled()
+  })
+
   test('handles AI error gracefully', async () => {
     const env = {
       DB: {},

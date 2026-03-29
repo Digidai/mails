@@ -17,7 +17,7 @@ export function buildEmbeddingText(
   bodyText: string,
 ): string {
   const parts = [subject, fromName, bodyText.slice(0, MAX_TEXT_LENGTH)]
-  return parts.filter(Boolean).join('\n')
+  return parts.filter(Boolean).join('\n').slice(0, MAX_TEXT_LENGTH)
 }
 
 /**
