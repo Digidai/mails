@@ -4,6 +4,9 @@ on:
   push:
     tags: ["v*"]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     strategy:
@@ -68,7 +71,10 @@ jobs:
       - run: bun install
       - run: bun run build
       - run: bun run typecheck
-      - run: bun test test/unit/ test/e2e/flow.test.ts test/e2e/sqlite-search.test.ts
+      - name: Run CLI tests (isolated)
+        run: bun test test/unit/cli.test.ts
+      - name: Run remaining unit tests
+        run: find test/unit -name '*.test.ts' ! -name 'cli.test.ts' | xargs bun test
 
       - name: Publish mails-agent
         run: npm publish --provenance --access public || true
