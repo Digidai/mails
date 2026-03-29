@@ -1,7 +1,17 @@
 import { describe, expect, test, beforeEach, afterEach, mock } from 'bun:test'
-import { send } from '../../src/core/send'
-import { saveConfig } from '../../src/core/config'
 import type { MailsConfig } from '../../src/core/types'
+
+// Use dynamic imports with cache-busting to avoid mock.module() pollution
+// from other test files (e.g. cli.test.ts) that run in the same process.
+let counter = 0
+async function freshConfig() {
+  counter++
+  return (await import(`../../src/core/config.ts?t=send_cfg_${counter}`)) as typeof import('../../src/core/config')
+}
+async function freshSend() {
+  counter++
+  return (await import(`../../src/core/send.ts?t=send_fn_${counter}`)) as typeof import('../../src/core/send')
+}
 
 const BASE_CONFIG: MailsConfig = {
   mode: 'hosted',
@@ -16,12 +26,14 @@ const BASE_CONFIG: MailsConfig = {
 describe('send', () => {
   const originalFetch = globalThis.fetch
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    const { saveConfig } = await freshConfig()
     saveConfig({ ...BASE_CONFIG })
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     globalThis.fetch = originalFetch
+    const { saveConfig } = await freshConfig()
     saveConfig({ ...BASE_CONFIG })
   })
 
@@ -30,6 +42,7 @@ describe('send', () => {
       return new Response(JSON.stringify({ id: 'msg_1' }))
     }) as typeof fetch
 
+    const { send } = await freshSend()
     const result = await send({
       to: 'user@example.com',
       subject: 'Hello',
@@ -48,6 +61,7 @@ describe('send', () => {
       return new Response(JSON.stringify({ id: 'msg_2' }))
     }) as typeof fetch
 
+    const { send } = await freshSend()
     await send({
       from: 'Custom <custom@test.com>',
       to: 'user@example.com',
@@ -59,22 +73,27 @@ describe('send', () => {
   })
 
   test('throws when no provider configured (no resend_api_key)', async () => {
+    const { saveConfig } = await freshConfig()
     saveConfig({ ...BASE_CONFIG, resend_api_key: undefined })
 
+    const { send } = await freshSend()
     expect(
       send({ to: 'a@b.com', subject: 'Test', text: 'hi' })
     ).rejects.toThrow('No send provider configured')
   })
 
   test('throws when no from address', async () => {
+    const { saveConfig } = await freshConfig()
     saveConfig({ ...BASE_CONFIG, default_from: undefined })
 
+    const { send } = await freshSend()
     expect(
       send({ to: 'a@b.com', subject: 'Test', text: 'hi' })
     ).rejects.toThrow('No "from" address')
   })
 
   test('throws when no body', async () => {
+    const { send } = await freshSend()
     expect(
       send({ to: 'a@b.com', subject: 'Test' })
     ).rejects.toThrow('Either text or html body is required')
@@ -88,6 +107,7 @@ describe('send', () => {
       return new Response(JSON.stringify({ id: 'msg_3' }))
     }) as typeof fetch
 
+    const { send } = await freshSend()
     await send({ to: 'single@test.com', subject: 'Test', text: 'hi' })
     expect(sentTo).toEqual(['single@test.com'])
 
@@ -96,14 +116,17 @@ describe('send', () => {
   })
 
   test('throws when no provider configured', async () => {
+    const { saveConfig } = await freshConfig()
     saveConfig({ ...BASE_CONFIG, send_provider: 'unknown', resend_api_key: undefined, api_key: undefined })
 
+    const { send } = await freshSend()
     expect(
       send({ to: 'a@b.com', subject: 'Test', text: 'hi' })
     ).rejects.toThrow('No send provider configured')
   })
 
   test('uses hosted provider when api_key set and no resend_api_key', async () => {
+    const { saveConfig } = await freshConfig()
     saveConfig({
       ...BASE_CONFIG,
       resend_api_key: undefined,
@@ -117,12 +140,14 @@ describe('send', () => {
       return new Response(JSON.stringify({ id: 'hosted_1', sends_this_month: 1, monthly_limit: 100 }))
     }) as typeof fetch
 
+    const { send } = await freshSend()
     const result = await send({ to: 'user@example.com', subject: 'Hosted', text: 'test' })
     expect(result.id).toBe('hosted_1')
     expect(result.provider).toBe('mails0.com')
   })
 
   test('api_key takes priority over resend_api_key', async () => {
+    const { saveConfig } = await freshConfig()
     saveConfig({
       ...BASE_CONFIG,
       resend_api_key: 're_should_not_use',
@@ -136,14 +161,17 @@ describe('send', () => {
       return new Response(JSON.stringify({ id: 'hosted_priority', sends_this_month: 1, monthly_limit: 100 }))
     }) as typeof fetch
 
+    const { send } = await freshSend()
     const result = await send({ to: 'user@example.com', subject: 'Priority', text: 'test' })
     expect(usedUrl).toContain('/v1/send')
     expect(result.provider).toBe('mails0.com')
   })
 
   test('throws when send_provider set but no credentials configured', async () => {
+    const { saveConfig } = await freshConfig()
     saveConfig({ ...BASE_CONFIG, resend_api_key: undefined, api_key: undefined, send_provider: 'resend' })
 
+    const { send } = await freshSend()
     expect(
       send({ to: 'a@b.com', subject: 'Test', text: 'hi' })
     ).rejects.toThrow('No send provider configured')

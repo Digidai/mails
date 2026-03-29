@@ -1,8 +1,15 @@
 import { describe, expect, test, mock, afterEach } from 'bun:test'
 import { existsSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { setConfigValue, loadConfig, saveConfig } from '../../src/core/config'
 import type { Email } from '../../src/core/types'
+
+// Use dynamic imports with cache-busting to avoid mock.module() pollution
+// across test files running in the same Bun process.
+let cfgCounter = 0
+async function freshConfig() {
+  cfgCounter++
+  return (await import(`../../src/core/config.ts?t=cli_cfg_${cfgCounter}`)) as typeof import('../../src/core/config')
+}
 
 describe('CLI: send command', () => {
   const originalFetch = globalThis.fetch
@@ -15,6 +22,7 @@ describe('CLI: send command', () => {
 
   test('send command parses args correctly', async () => {
     // Setup config
+    const { setConfigValue } = await freshConfig()
     setConfigValue('resend_api_key', 're_test')
     setConfigValue('default_from', 'Bot <bot@test.com>')
 
@@ -25,7 +33,8 @@ describe('CLI: send command', () => {
     }) as typeof fetch
 
     // Import and call directly
-    const { send } = await import('../../src/core/send')
+    cfgCounter++
+    const { send } = await import(`../../src/core/send.ts?t=cli_send_${cfgCounter}`)
     const result = await send({
       to: 'user@example.com',
       subject: 'CLI Test',
@@ -53,6 +62,7 @@ describe('CLI: send command', () => {
   })
 
   test('send command supports repeated --attach flags', async () => {
+    const { setConfigValue } = await freshConfig()
     setConfigValue('resend_api_key', 're_test')
     setConfigValue('default_from', 'Bot <bot@test.com>')
     writeFileSync(attachmentPath, 'attachment from path')
@@ -63,7 +73,8 @@ describe('CLI: send command', () => {
       return new Response(JSON.stringify({ id: 'msg_cli_attach' }))
     }) as typeof fetch
 
-    const { sendCommand } = await import('../../src/cli/commands/send')
+    cfgCounter++
+    const { sendCommand } = await import(`../../src/cli/commands/send.ts?t=cli_scmd_${cfgCounter}`)
     const originalLog = console.log
     console.log = () => {}
 
@@ -89,13 +100,14 @@ describe('CLI: send command', () => {
 })
 
 describe('CLI: config command', () => {
-  test('config set and get work', () => {
+  test('config set and get work', async () => {
+    const { setConfigValue, getConfigValue } = await freshConfig()
     setConfigValue('domain', 'cli-test.com')
-    const { getConfigValue } = require('../../src/core/config')
     expect(getConfigValue('domain')).toBe('cli-test.com')
   })
 
-  test('config loads defaults for missing file', () => {
+  test('config loads defaults for missing file', async () => {
+    const { loadConfig } = await freshConfig()
     const config = loadConfig()
     expect(config.mode).toBe('hosted')
     expect(config.send_provider).toBe('resend')

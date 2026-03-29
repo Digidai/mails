@@ -1,16 +1,23 @@
 import { describe, expect, test, beforeEach, afterEach, mock } from 'bun:test'
-import { saveConfig } from '../../src/core/config'
 import type { MailsConfig } from '../../src/core/types'
 
-// Each test needs a fresh storage module to avoid cached _provider
+// Use dynamic imports with cache-busting to avoid mock.module() pollution
+// from other test files (e.g. cli.test.ts) that run in the same process.
 let counter = 0
+async function freshConfig() {
+  counter++
+  return (await import(`../../src/core/config.ts?t=sr_cfg_${counter}`)) as typeof import('../../src/core/config')
+}
+
+// Each test needs a fresh storage module to avoid cached _provider
 async function freshGetStorage() {
-  const { loadConfig } = await import('../../src/core/config')
-  const { createSqliteProvider } = await import('../../src/providers/storage/sqlite')
-  const { createRemoteProvider } = await import('../../src/providers/storage/remote')
+  counter++
+  const { loadConfig } = await freshConfig()
+  const { createSqliteProvider } = await import(`../../src/providers/storage/sqlite.ts?t=sr_sql_${counter}`)
+  const { createRemoteProvider } = await import(`../../src/providers/storage/remote.ts?t=sr_rem_${counter}`)
   const type = await import('../../src/core/types')
 
-  let _provider: type.StorageProvider | null = null
+  let _provider: typeof type.StorageProvider extends new (...args: any[]) => infer T ? T : any
   const config = loadConfig()
 
   if (config.api_key || config.worker_url || config.storage_provider === 'remote') {
@@ -33,7 +40,8 @@ async function freshGetStorage() {
 describe('storage resolver', () => {
   const originalFetch = globalThis.fetch
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    const { saveConfig } = await freshConfig()
     saveConfig({
       mode: 'hosted',
       domain: 'mails0.com',
@@ -53,6 +61,7 @@ describe('storage resolver', () => {
   })
 
   test('auto-detects remote when api_key is set', async () => {
+    const { saveConfig } = await freshConfig()
     saveConfig({
       mode: 'hosted',
       domain: 'mails0.com',
@@ -67,6 +76,7 @@ describe('storage resolver', () => {
   })
 
   test('auto-detects remote when worker_url is set', async () => {
+    const { saveConfig } = await freshConfig()
     saveConfig({
       mode: 'selfhosted',
       domain: 'test.com',
@@ -83,6 +93,7 @@ describe('storage resolver', () => {
 
   test('explicit storage_provider=remote works', async () => {
     globalThis.fetch = mock(async () => new Response(JSON.stringify({ emails: [] }))) as typeof fetch
+    const { saveConfig } = await freshConfig()
     saveConfig({
       mode: 'hosted',
       domain: 'mails0.com',
@@ -97,6 +108,7 @@ describe('storage resolver', () => {
   })
 
   test('throws when remote but no mailbox', async () => {
+    const { saveConfig } = await freshConfig()
     saveConfig({
       mode: 'hosted',
       domain: 'mails0.com',
