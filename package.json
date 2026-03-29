@@ -1,6 +1,6 @@
 {
   "name": "mails-agent",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "Email infrastructure for AI agents. Send, receive, search, and extract verification codes.",
   "type": "module",
   "main": "dist/index.js",
