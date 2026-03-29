@@ -17,7 +17,5 @@ jobs:
       - run: bun run build
       - run: bun run typecheck
 
-      - name: Run tests
-        run: |
-          bun test test/unit/send.test.ts
-          bun test test/unit/cli.test.ts test/unit/config.test.ts test/unit/config-resolve.test.ts test/unit/extract-code.test.ts test/unit/hosted.test.ts test/unit/index.test.ts test/unit/mime.test.ts test/unit/receive.test.ts test/unit/remote.test.ts test/unit/resend.test.ts test/unit/send-attachments.test.ts test/unit/sqlite.test.ts test/unit/storage-resolver.test.ts test/unit/storage.test.ts test/unit/worker.test.ts test/unit/worker-send.test.ts test/unit/worker-handlers.test.ts test/e2e/flow.test.ts test/e2e/sqlite-search.test.ts
+      - name: Run unit tests
+        run: bun test test/unit/
