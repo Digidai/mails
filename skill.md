@@ -2,7 +2,7 @@
 
 You can send emails, receive emails, search your inbox, and extract verification codes. Deploy on your own domain with Cloudflare (free tier). Full control, no third-party dependency.
 
-**Capabilities:** send (with attachments), receive, inbox search (FTS5), verification code extraction (EN/ZH/JA/KO), email deletion, webhook notifications, email threading, auto labels (newsletter/notification/code/personal), structured data extraction (orders, shipping, calendar, receipts).
+**Capabilities:** send (with attachments), receive, inbox search (FTS5), semantic search (Workers AI + Vectorize, keyword/semantic/hybrid modes), verification code extraction (EN/ZH/JA/KO), email deletion, webhook notifications, email threading, auto labels (newsletter/notification/code/personal), structured data extraction (orders, shipping, calendar, receipts), dashboard console (mails0.com/console).
 
 ## Onboarding (follow these steps in order)
 
@@ -119,6 +119,8 @@ mails inbox --query "password reset"         # Search emails
 mails inbox --query "invoice" --direction inbound --limit 10
 mails inbox --label notification             # Filter by label
 mails inbox --threads                        # List conversation threads
+mails inbox --query "keyword" --semantic     # Semantic search (requires Vectorize)
+mails inbox --query "keyword" --mode hybrid  # Hybrid search (FTS5 + semantic)
 mails inbox <email-id>                       # Show full email details (with attachments)
 ```
 
@@ -226,6 +228,8 @@ Worker API endpoints:
 | `DELETE /api/email?id=<id>` | Delete email (and its attachments + R2 objects) |
 | `GET /api/inbox?to=<addr>&label=<label>` | Filter emails by label (newsletter, notification, code, personal) |
 | `GET /api/attachment?id=<id>` | Download attachment |
+| `GET /api/inbox?to=<addr>&query=<text>&mode=<mode>` | Search with mode: `keyword` (default), `semantic`, or `hybrid` |
+| `GET /api/search?to=<addr>&q=<text>` | Search alias (defaults to `mode=hybrid`) |
 | `GET /api/threads?to=<addr>` | List conversation threads |
 | `GET /api/thread?id=<id>&to=<addr>` | Get all emails in a thread |
 | `POST /api/extract` | Extract structured data (order, shipping, calendar, receipt, code) |

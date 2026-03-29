@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.0] - 2026-03-28
+
+### Added
+- **Semantic Search** — Workers AI embeddings (`@cf/baai/bge-base-en-v1.5`) + Cloudflare Vectorize
+  - Emails are automatically embedded on receive via `ctx.waitUntil()`
+  - `GET /api/inbox?query=...&mode=semantic` — pure vector search
+  - `GET /api/inbox?query=...&mode=hybrid` — FTS5 + semantic with Reciprocal Rank Fusion
+  - `GET /api/search?q=...` — new alias endpoint, defaults to `mode=hybrid`
+  - CLI: `mails inbox --query "keyword" --semantic` or `--mode hybrid`
+  - Graceful degradation: returns empty results when AI/VECTORIZE bindings are absent
+- **Dashboard Console** — visual email management at `mails0.com/console`
+  - View inbox, read emails, manage threads in a browser UI
+  - Dark/light theme support, responsive design
+- **67 new tests** (embeddings: 15, semantic search: 4, inbox handler modes: 48) — total 298 across 29 test files
+
+### Performance
+- Non-blocking embedding generation via `ctx.waitUntil()`
+- Hybrid search runs FTS5 and Vectorize in parallel (`Promise.all`)
+
 ## [1.5.0] - 2026-03-28
 
 ### Added
