@@ -170,11 +170,19 @@ describe('CLI: inbox command', () => {
       getInbox: getInboxSpy,
       searchInbox: searchInboxSpy,
       getEmail: getEmailSpy,
+      deleteEmail: mock(async () => false),
       getThreads: mock(async () => []),
       getThread: mock(async () => []),
+      waitForCode: mock(async () => null),
     }))
     mock.module('../../src/core/config.js', () => ({
       loadConfig: () => ({ mailbox: 'agent@test.com', send_provider: 'resend', storage_provider: 'sqlite' }),
+      saveConfig: mock(() => {}),
+      getConfigValue: mock(() => undefined),
+      setConfigValue: mock(() => {}),
+      resolveApiKey: mock(async () => null),
+      CONFIG_DIR: '/tmp/.mails',
+      CONFIG_FILE: '/tmp/.mails/config.json',
     }))
 
     console.log = (msg?: unknown) => { output.push(String(msg ?? '')) }
@@ -203,11 +211,19 @@ describe('CLI: inbox command', () => {
       getInbox: getInboxSpy,
       searchInbox: searchInboxSpy,
       getEmail: mock(async () => null),
+      deleteEmail: mock(async () => false),
       getThreads: mock(async () => []),
       getThread: mock(async () => []),
+      waitForCode: mock(async () => null),
     }))
     mock.module('../../src/core/config.js', () => ({
       loadConfig: () => ({ mailbox: 'agent@test.com', send_provider: 'resend', storage_provider: 'sqlite' }),
+      saveConfig: mock(() => {}),
+      getConfigValue: mock(() => undefined),
+      setConfigValue: mock(() => {}),
+      resolveApiKey: mock(async () => null),
+      CONFIG_DIR: '/tmp/.mails',
+      CONFIG_FILE: '/tmp/.mails/config.json',
     }))
 
     console.log = (msg?: unknown) => { output.push(String(msg ?? '')) }
