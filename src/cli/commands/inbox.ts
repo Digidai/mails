@@ -57,7 +57,8 @@ export async function inboxCommand(args: string[]) {
     process.exit(1)
   }
 
-  const limit = opts.limit ? (parseInt(opts.limit, 10) || 20) : 20
+  const rawLimit = opts.limit ? parseInt(opts.limit, 10) : 20
+  const limit = Number.isNaN(rawLimit) ? 20 : Math.max(1, Math.min(200, rawLimit))
 
   // mails inbox --threads — list threads
   if (opts.threads) {
@@ -86,13 +87,48 @@ export async function inboxCommand(args: string[]) {
     : await getInbox(mailbox, { limit, direction, ...(label ? { label } : {}) })
 
   if (emails.length === 0) {
-    console.log(query ? `No emails found for query: ${query}` : 'No emails found.')
+    if (query) {
+      console.log(`No emails found for query: ${query}`)
+    } else {
+      console.log('No emails yet. Try:')
+      console.log(`  mails send --to ${mailbox} --subject "Test" --body "Hello"`)
+      console.log('  mails demo')
+    }
     return
   }
 
-  for (const email of emails) {
-    const code = email.code ? ` [${email.code}]` : ''
-    const from = email.from_name || email.from_address
-    console.log(`${email.id.slice(0, 8)}  ${email.received_at.slice(0, 16)}  ${from.padEnd(24).slice(0, 24)}  ${email.subject.slice(0, 40)}${code}`)
+  const plain = opts.plain === 'true' || !!process.env.NO_COLOR || !process.stdout.isTTY
+
+  if (plain) {
+    // Plain mode: tab-separated, no colors, no emoji
+    for (const email of emails) {
+      const from = email.from_name || email.from_address
+      console.log(`${email.id.slice(0, 8)}\t${email.received_at.slice(0, 16)}\t${from}\t${email.subject}${email.code ? `\t${email.code}` : ''}`)
+    }
+  } else {
+    // Rich mode: colored table with emoji labels
+    const RESET = '\x1b[0m'
+    const DIM = '\x1b[2m'
+    const BOLD = '\x1b[1m'
+    const CYAN = '\x1b[36m'
+    const GREEN = '\x1b[32m'
+
+    const labelEmoji: Record<string, string> = {
+      newsletter: '📬',
+      notification: '🔔',
+      code: '🔑',
+      personal: '👤',
+    }
+
+    console.log(`${DIM}  ID        Date              From                      Subject${RESET}`)
+    console.log(`${DIM}  ────────  ────────────────  ────────────────────────  ────────────────────────────${RESET}`)
+    for (const email of emails) {
+      const from = (email.from_name || email.from_address).padEnd(24).slice(0, 24)
+      const subject = email.subject.slice(0, 36)
+      const codeStr = email.code ? `${GREEN} [${email.code}]${RESET}` : ''
+      const label = email.metadata?.label ? ` ${labelEmoji[email.metadata.label as string] ?? ''}` : ''
+      console.log(`  ${CYAN}${email.id.slice(0, 8)}${RESET}  ${DIM}${email.received_at.slice(0, 16)}${RESET}  ${BOLD}${from}${RESET}  ${subject}${codeStr}${label}`)
+    }
+    console.log(`${DIM}  ${emails.length} email${emails.length === 1 ? '' : 's'}${RESET}`)
   }
 }

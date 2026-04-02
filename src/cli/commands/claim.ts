@@ -95,10 +95,16 @@ export async function claimCommand(args: string[]) {
       setConfigValue('api_key', pollData.api_key!)
       setConfigValue('default_from', pollData.mailbox!)
 
-      console.log(`  Claimed: ${pollData.mailbox}`)
-      console.log(`  API Key: ${pollData.api_key}`)
+      console.log(`  ✓ Claimed: ${pollData.mailbox}`)
+      console.log(`  ✓ API Key: ${pollData.api_key!.slice(0, 8)}...`)
+      console.log(`  ✓ Saved to ~/.mails/config.json`)
       console.log('')
-      console.log('  Saved to ~/.mails/config.json')
+      console.log('  Try it now:')
+      console.log(`    mails send --to ${pollData.mailbox} --subject "Test" --body "Hello from my agent"`)
+      console.log(`    mails inbox`)
+      console.log(`    mails code --to ${pollData.mailbox} --timeout 30`)
+      console.log('')
+      console.log('  Docs: https://github.com/Digidai/mails')
       return
     }
 

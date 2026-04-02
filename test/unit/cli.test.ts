@@ -253,6 +253,6 @@ describe('CLI: inbox command', () => {
     expect(searchInboxSpy.mock.calls).toHaveLength(0)
     expect(output.join('\n')).toContain('abcdef12')
     expect(output.join('\n')).toContain('Invoice update')
-    expect(output.join('\n')).toContain('[123456]')
+    expect(output.join('\n')).toContain('123456')
   })
 })

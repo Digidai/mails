@@ -43,7 +43,9 @@ export function createHostedSendProvider(apiKey: string, apiUrl?: string): SendP
         throw new Error(`Cannot connect to ${baseUrl}: ${err instanceof Error ? err.message : err}`)
       }
 
-      const data = await res.json().catch(() => ({})) as {
+      const data = await res.json().catch(() => {
+        throw new Error(`Unexpected non-JSON response from ${baseUrl} (HTTP ${res.status}). Possible Cloudflare error page.`)
+      }) as {
         id?: string
         from?: string
         sends_this_month?: number

@@ -4,6 +4,9 @@ import { inboxCommand } from './commands/inbox.js'
 import { codeCommand } from './commands/code.js'
 import { configCommand } from './commands/config.js'
 import { claimCommand } from './commands/claim.js'
+import { doctorCommand } from './commands/doctor.js'
+import { demoCommand } from './commands/demo.js'
+import { statsCommand } from './commands/stats.js'
 import { helpCommand } from './commands/help.js'
 
 const args = process.argv.slice(2)
@@ -26,6 +29,15 @@ async function main() {
     case 'config':
       await configCommand(args.slice(1))
       break
+    case 'doctor':
+      await doctorCommand()
+      break
+    case 'demo':
+      await demoCommand()
+      break
+    case 'stats':
+      await statsCommand()
+      break
     case 'help':
     case '--help':
     case '-h':
@@ -35,7 +47,7 @@ async function main() {
     case 'version':
     case '--version':
     case '-v':
-      console.log('mails v1.6.1')
+      console.log('mails v1.7.0')
       break
     default:
       console.error(`Unknown command: ${command}`)

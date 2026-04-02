@@ -44,7 +44,9 @@ export function createWorkerSendProvider(url: string, token?: string): SendProvi
       }
 
       if (!res.ok) {
-        const data = await res.json().catch(() => ({})) as { error?: string }
+        const data = await res.json().catch(() => {
+          throw new Error(`Unexpected non-JSON response from Worker at ${url} (HTTP ${res.status})`)
+        }) as { error?: string }
         throw new Error(`Worker send error: ${data.error ?? res.statusText}`)
       }
 
