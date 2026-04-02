@@ -18,6 +18,8 @@ import { generateAndStoreEmbedding } from './embeddings'
 export type { Env } from './types'
 
 const R2_UPLOAD_THRESHOLD = 100_000 // 100KB
+const MAX_ATTACHMENT_SIZE = 100 * 1024 * 1024 // 100MB
+const R2_UPLOAD_TIMEOUT = 30_000 // 30s
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -109,6 +111,30 @@ export default {
                 }
                 response = await handleExtract(request, url, env, mailbox)
                 break
+              case '/api/stats': {
+                const mb = mailbox ?? url.searchParams.get('to') ?? ''
+                if (!mb) {
+                  response = Response.json({ error: 'Mailbox required' }, { status: 400 })
+                  break
+                }
+                const total = await env.DB.prepare(
+                  'SELECT COUNT(*) as total, SUM(CASE WHEN direction = ? THEN 1 ELSE 0 END) as inbound, SUM(CASE WHEN direction = ? THEN 1 ELSE 0 END) as outbound FROM emails WHERE mailbox = ?'
+                ).bind('inbound', 'outbound', mb).first<{ total: number; inbound: number; outbound: number }>()
+                const thisMonth = new Date()
+                thisMonth.setDate(1)
+                thisMonth.setHours(0, 0, 0, 0)
+                const monthly = await env.DB.prepare(
+                  'SELECT COUNT(*) as count FROM emails WHERE mailbox = ? AND received_at >= ?'
+                ).bind(mb, thisMonth.toISOString()).first<{ count: number }>()
+                response = Response.json({
+                  mailbox: mb,
+                  total_emails: total?.total ?? 0,
+                  inbound: total?.inbound ?? 0,
+                  outbound: total?.outbound ?? 0,
+                  emails_this_month: monthly?.count ?? 0,
+                })
+                break
+              }
               default:
                 response = Response.json({ error: 'Not found' }, { status: 404 })
             }
@@ -154,9 +180,17 @@ export default {
       // Upload large attachments to R2
       for (const att of parsed.attachments) {
         if (att.raw_content && att.size_bytes && att.size_bytes > R2_UPLOAD_THRESHOLD && env.ATTACHMENTS) {
+          if (att.size_bytes > MAX_ATTACHMENT_SIZE) {
+            console.warn(`Skipping oversized attachment ${att.filename} (${att.size_bytes} bytes, max ${MAX_ATTACHMENT_SIZE})`)
+            continue
+          }
           const key = `${id}/${att.id}`
           try {
-            await env.ATTACHMENTS.put(key, attachmentContentToUint8Array(att.raw_content))
+            const uploadPromise = env.ATTACHMENTS.put(key, attachmentContentToUint8Array(att.raw_content))
+            const timeoutPromise = new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error(`R2 upload timed out after ${R2_UPLOAD_TIMEOUT}ms`)), R2_UPLOAD_TIMEOUT)
+            )
+            await Promise.race([uploadPromise, timeoutPromise])
             att.storage_key = key
             att.downloadable = true
             console.log(`R2 upload: ${key} (${att.size_bytes} bytes)`)
