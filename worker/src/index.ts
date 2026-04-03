@@ -10,7 +10,10 @@ import { handleSend, parseFromName } from './handlers/send'
 import { handleGetAttachment } from './handlers/attachment'
 import { handleGetThreads, handleGetThread } from './handlers/threads'
 import { handleExtract } from './handlers/extract'
-import { fireWebhook, getWebhookUrl } from './handlers/webhook'
+import { fireWebhookWithRetry, fireWebhook, getWebhookUrl } from './handlers/webhook'
+import { handleEvents, recordEvent } from './handlers/events'
+import { handleResendWebhook } from './handlers/delivery-status'
+import { handleDomains } from './handlers/domains'
 import { resolveThreadId } from './threading'
 import { detectLabels } from './auto-label'
 import { generateAndStoreEmbedding } from './embeddings'
@@ -39,6 +42,9 @@ export default {
     // /health is always public
     if (url.pathname === '/health') {
       response = Response.json({ ok: true })
+    } else if (url.pathname === '/api/resend-webhook' && request.method === 'POST') {
+      // Resend delivery status callbacks — public endpoint, verified by Resend secret
+      response = await handleResendWebhook(request, env, ctx)
     } else if (url.pathname.startsWith('/v1/') || url.pathname.startsWith('/api/')) {
       // /v1/* = hosted API (always requires auth_tokens, mailbox-scoped)
       // /api/* = self-hosted API (supports AUTH_TOKEN, public fallback)
@@ -111,6 +117,12 @@ export default {
                 }
                 response = await handleExtract(request, url, env, mailbox)
                 break
+              case '/api/events':
+                response = handleEvents(url, env, mailbox)
+                break
+              case '/api/domains':
+                response = await handleDomains(request, url, env, mailbox)
+                break
               case '/api/stats': {
                 const mb = mailbox ?? url.searchParams.get('to') ?? ''
                 if (!mb) {
@@ -136,7 +148,12 @@ export default {
                 break
               }
               default:
-                response = Response.json({ error: 'Not found' }, { status: 404 })
+                // Handle sub-path routes: /api/domains/:id, /api/domains/:id/verify
+                if (route.startsWith('/api/domains/')) {
+                  response = await handleDomains(request, url, env, mailbox)
+                } else {
+                  response = Response.json({ error: 'Not found' }, { status: 404 })
+                }
             }
           } catch (err) {
             console.error(`API error ${url.pathname}:`, err)
@@ -264,23 +281,24 @@ export default {
         }
       }
 
-      // Fire webhook (non-blocking via waitUntil)
-      const webhookUrl = await getWebhookUrl(env, to)
-      if (webhookUrl) {
-        ctx.waitUntil(fireWebhook(env, {
-          event: 'email.received',
-          email_id: id,
-          mailbox: to,
-          from,
-          subject,
-          received_at: now,
-          message_id: parsed.messageId,
-          thread_id: threadId,
-          labels,
-          has_attachments: parsed.attachmentCount > 0,
-          attachment_count: parsed.attachmentCount,
-        }, webhookUrl))
+      // Record SSE event (non-blocking)
+      const eventPayload = {
+        event: 'message.received',
+        email_id: id,
+        mailbox: to,
+        from,
+        subject,
+        received_at: now,
+        message_id: parsed.messageId,
+        thread_id: threadId,
+        labels,
+        has_attachments: parsed.attachmentCount > 0,
+        attachment_count: parsed.attachmentCount,
       }
+      ctx.waitUntil(recordEvent(env, 'message.received', to, eventPayload))
+
+      // Fire webhook with retry (non-blocking via waitUntil)
+      ctx.waitUntil(fireWebhookWithRetry(env, to, eventPayload))
 
       // Generate embedding for semantic search (non-blocking)
       ctx.waitUntil(

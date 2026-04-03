@@ -18,10 +18,10 @@ export async function resolveAuth(request: Request, env: Env, requireTokenTable 
   if (hasAuthTokensTable) {
     if (!token) return null
     const row = await env.DB.prepare(
-      'SELECT mailbox FROM auth_tokens WHERE token = ?'
-    ).bind(token).first<{ mailbox: string }>()
+      'SELECT mailbox, scope FROM auth_tokens WHERE token = ?'
+    ).bind(token).first<{ mailbox: string; scope?: string }>()
     if (!row) return null
-    return { mailbox: row.mailbox }
+    return { mailbox: row.mailbox, scope: (row.scope === 'mailbox' ? 'mailbox' : 'full') }
   }
 
   // /v1/* routes always require auth_tokens table — no fallback
@@ -32,11 +32,11 @@ export async function resolveAuth(request: Request, env: Env, requireTokenTable 
   // Legacy single AUTH_TOKEN mode (no mailbox isolation)
   if (env.AUTH_TOKEN) {
     if (!token || token !== env.AUTH_TOKEN) return null
-    return { mailbox: null }
+    return { mailbox: null, scope: 'full' }
   }
 
   // No auth configured — public access
-  return { mailbox: null }
+  return { mailbox: null, scope: 'full' }
 }
 
 function extractBearerToken(request: Request): string | null {

@@ -7,8 +7,11 @@ export interface Env {
   AUTH_TOKENS?: string
   RESEND_API_KEY?: string
   WEBHOOK_SECRET?: string
+  RESEND_WEBHOOK_SECRET?: string
 }
 
 export interface AuthContext {
   mailbox: string | null
+  /** 'full' = all operations, 'mailbox' = restricted to own mailbox */
+  scope: 'full' | 'mailbox'
 }
