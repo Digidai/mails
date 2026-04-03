@@ -27,6 +27,20 @@ async function signPayload(body: string, secret: string): Promise<string> {
 }
 
 /**
+ * Check if a webhook URL targets the mails-gtm-agent Worker.
+ * When true, use the MAILS_GTM_WORKER Service Binding instead of HTTP fetch
+ * to avoid Cloudflare error 1042 on same-account worker-to-worker calls.
+ */
+function isServiceBindingTarget(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    return parsed.hostname.includes('mails-gtm-agent')
+  } catch {
+    return false
+  }
+}
+
+/**
  * Fire webhook with exponential backoff retry.
  * Retry schedule: 1s, 5s, 30s, 2min, 12min (5 retries max).
  * After 10 consecutive failures, marks webhook as FAILED in DB.
@@ -50,6 +64,10 @@ export async function fireWebhookWithRetry(
     headers['X-Webhook-Signature'] = await signPayload(body, env.WEBHOOK_SECRET)
   }
 
+  // Use Service Binding if the webhook URL points to mails-gtm-agent (same Cloudflare account).
+  // This avoids error 1042 on worker-to-worker HTTP calls.
+  const useServiceBinding = env.MAILS_GTM_WORKER && isServiceBindingTarget(webhookUrl)
+
   // Keep total retry time under 15s to fit within Workers waitUntil() limits
   const retryDelays = [0, 1000, 3000, 8000]
   let lastError = ''
@@ -60,7 +78,9 @@ export async function fireWebhookWithRetry(
     }
 
     try {
-      const res = await fetch(webhookUrl, { method: 'POST', headers, body })
+      const res = useServiceBinding
+        ? await env.MAILS_GTM_WORKER!.fetch(new Request(webhookUrl, { method: 'POST', headers, body }))
+        : await fetch(webhookUrl, { method: 'POST', headers, body })
       if (res.ok || res.status < 500) {
         // Success or client error (don't retry 4xx)
         console.log(`Webhook fired to ${webhookUrl} status=${res.status} event=${payload.event} attempt=${attempt + 1}`)

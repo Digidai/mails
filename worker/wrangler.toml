@@ -27,6 +27,11 @@ index_name = "mails-embeddings"
 send_email = [{ name = "EMAIL" }]
 crons = ["0 * * * *"]  # Hourly: clean up old SSE events
 
+# Service binding to mails-gtm-agent (avoids error 1042 on same-account webhook calls)
+[[services]]
+binding = "MAILS_GTM_WORKER"
+service = "mails-gtm-agent"
+
 # Secrets (set via `wrangler secret put`):
 #   AUTH_TOKEN      - Legacy single API authentication token (no mailbox isolation)
 #   RESEND_API_KEY  - Resend API key for sending emails

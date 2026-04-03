@@ -3,6 +3,7 @@ export interface Env {
   ATTACHMENTS?: R2Bucket
   AI?: Ai
   VECTORIZE?: VectorizeIndex
+  MAILS_GTM_WORKER?: Fetcher  // Service binding to mails-gtm-agent
   AUTH_TOKEN?: string
   AUTH_TOKENS?: string
   RESEND_API_KEY?: string
