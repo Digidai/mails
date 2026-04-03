@@ -10,7 +10,7 @@ import { handleSend, parseFromName } from './handlers/send'
 import { handleGetAttachment } from './handlers/attachment'
 import { handleGetThreads, handleGetThread } from './handlers/threads'
 import { handleExtract } from './handlers/extract'
-import { fireWebhookWithRetry, fireWebhook, getWebhookUrl } from './handlers/webhook'
+import { fireWebhookWithRetry, getWebhookUrl } from './handlers/webhook'
 import { handleEvents, recordEvent } from './handlers/events'
 import { handleResendWebhook } from './handlers/delivery-status'
 import { handleDomains } from './handlers/domains'
@@ -306,6 +306,16 @@ export default {
       )
     } catch (err) {
       console.error(`Email processing failed for id=${id} to=${to} from=${from}:`, err)
+    }
+  },
+  // Scheduled handler: clean up old events (runs hourly via cron trigger)
+  async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    try {
+      const result = await env.DB.prepare('DELETE FROM events WHERE created_at < ?').bind(cutoff).run()
+      console.log(`Events cleanup: deleted ${result.meta.changes ?? 0} events older than ${cutoff}`)
+    } catch (err) {
+      console.error('Events cleanup failed:', err)
     }
   },
 } satisfies ExportedHandler<Env>

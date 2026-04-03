@@ -50,7 +50,8 @@ export async function fireWebhookWithRetry(
     headers['X-Webhook-Signature'] = await signPayload(body, env.WEBHOOK_SECRET)
   }
 
-  const retryDelays = [0, 1000, 5000, 30000, 120000]
+  // Keep total retry time under 15s to fit within Workers waitUntil() limits
+  const retryDelays = [0, 1000, 3000, 8000]
   let lastError = ''
 
   for (let attempt = 0; attempt < retryDelays.length; attempt++) {
@@ -80,33 +81,6 @@ export async function fireWebhookWithRetry(
   // All retries exhausted — increment failure counter
   console.error(`Webhook exhausted all retries for ${webhookUrl}: ${lastError}`)
   await incrementWebhookFailures(env, mailbox)
-}
-
-/**
- * Legacy non-retry webhook for backward compat.
- */
-export async function fireWebhook(
-  env: Env,
-  payload: WebhookPayload,
-  webhookUrl: string,
-): Promise<void> {
-  const body = JSON.stringify(payload)
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'X-Webhook-Event': payload.event,
-    'X-Webhook-Id': payload.email_id,
-  }
-
-  if (env.WEBHOOK_SECRET) {
-    headers['X-Webhook-Signature'] = await signPayload(body, env.WEBHOOK_SECRET)
-  }
-
-  try {
-    const res = await fetch(webhookUrl, { method: 'POST', headers, body })
-    console.log(`Webhook fired to ${webhookUrl} status=${res.status} email_id=${payload.email_id}`)
-  } catch (err) {
-    console.error(`Webhook failed to ${webhookUrl}: ${err instanceof Error ? err.message : err}`)
-  }
 }
 
 /**

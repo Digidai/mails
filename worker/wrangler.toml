@@ -25,6 +25,7 @@ index_name = "mails-embeddings"
 # The catch-all rule in Cloudflare Dashboard routes *@yourdomain.com → this Worker
 [triggers]
 send_email = [{ name = "EMAIL" }]
+crons = ["0 * * * *"]  # Hourly: clean up old SSE events
 
 # Secrets (set via `wrangler secret put`):
 #   AUTH_TOKEN      - Legacy single API authentication token (no mailbox isolation)
