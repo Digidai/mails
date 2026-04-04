@@ -17,11 +17,21 @@ export async function resolveAuth(request: Request, env: Env, requireTokenTable 
   const hasAuthTokensTable = await checkAuthTokensTable(env)
   if (hasAuthTokensTable) {
     if (!token) return null
-    const row = await env.DB.prepare(
-      'SELECT mailbox FROM auth_tokens WHERE token = ?'
-    ).bind(token).first<{ mailbox: string }>()
-    if (!row) return null
-    return { mailbox: row.mailbox, scope: 'full' }
+    try {
+      // Try with scope column (present after migration 0002 is applied)
+      const row = await env.DB.prepare(
+        'SELECT mailbox, scope FROM auth_tokens WHERE token = ?'
+      ).bind(token).first<{ mailbox: string; scope?: string }>()
+      if (!row) return null
+      return { mailbox: row.mailbox, scope: (row.scope === 'mailbox' ? 'mailbox' : 'full') }
+    } catch {
+      // scope column doesn't exist yet — fallback to mailbox-only query
+      const row = await env.DB.prepare(
+        'SELECT mailbox FROM auth_tokens WHERE token = ?'
+      ).bind(token).first<{ mailbox: string }>()
+      if (!row) return null
+      return { mailbox: row.mailbox, scope: 'full' }
+    }
   }
 
   // /v1/* routes always require auth_tokens table — no fallback

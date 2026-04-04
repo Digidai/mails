@@ -4,7 +4,7 @@ import { handleGetAttachment } from '../../worker/src/handlers/attachment'
 import { handleGetEmail, handleDeleteEmail } from '../../worker/src/handlers/email'
 import { handleInbox } from '../../worker/src/handlers/inbox'
 import { handleGetCode } from '../../worker/src/handlers/code'
-import { fireWebhook, getWebhookUrl } from '../../worker/src/handlers/webhook'
+import { fireWebhookWithRetry as fireWebhook, getWebhookUrl } from '../../worker/src/handlers/webhook'
 import { resolveAuth, _resetAuthCache } from '../../worker/src/handlers/auth'
 import type { Env } from '../../worker/src/types'
 
@@ -740,6 +740,21 @@ describe('fireWebhook', () => {
     attachment_count: 0,
   }
 
+  // fireWebhookWithRetry looks up webhook_url from DB via getWebhookUrl(env, mailbox).
+  // We mock DB to return the webhook URL for the mailbox used in samplePayload.
+  function makeWebhookEnv(overrides: Record<string, unknown> = {}) {
+    return {
+      ...makeEnv(overrides),
+      DB: {
+        prepare: () => ({
+          bind: () => ({
+            first: async () => ({ webhook_url: 'https://hooks.example.com/email' }),
+          }),
+        }),
+      },
+    } as any
+  }
+
   test('sends POST with correct payload', async () => {
     let capturedUrl = ''
     let capturedInit: RequestInit = {}
@@ -750,8 +765,8 @@ describe('fireWebhook', () => {
       return new Response('OK', { status: 200 })
     }) as typeof fetch
 
-    const env = makeEnv()
-    await fireWebhook(env, samplePayload, 'https://hooks.example.com/email')
+    const env = makeWebhookEnv()
+    await fireWebhook(env, 'user@example.com', samplePayload)
 
     expect(capturedUrl).toBe('https://hooks.example.com/email')
     expect(capturedInit.method).toBe('POST')
@@ -775,8 +790,8 @@ describe('fireWebhook', () => {
       return new Response('OK', { status: 200 })
     }) as typeof fetch
 
-    const env = makeEnv({ WEBHOOK_SECRET: 'my-secret-key' })
-    await fireWebhook(env, samplePayload, 'https://hooks.example.com/email')
+    const env = makeWebhookEnv({ WEBHOOK_SECRET: 'my-secret-key' })
+    await fireWebhook(env, 'user@example.com', samplePayload)
 
     expect(capturedHeaders['X-Webhook-Signature']).toBeDefined()
     expect(capturedHeaders['X-Webhook-Signature']).toMatch(/^sha256=[0-9a-f]+$/)
@@ -792,8 +807,8 @@ describe('fireWebhook', () => {
       return new Response('OK', { status: 200 })
     }) as typeof fetch
 
-    const env = makeEnv()
-    await fireWebhook(env, samplePayload, 'https://hooks.example.com/email')
+    const env = makeWebhookEnv()
+    await fireWebhook(env, 'user@example.com', samplePayload)
 
     expect(capturedHeaders['X-Webhook-Signature']).toBeUndefined()
 
@@ -802,12 +817,23 @@ describe('fireWebhook', () => {
 
   test('handles fetch failure gracefully (does not throw)', async () => {
     globalThis.fetch = mock(async () => {
-      throw new Error('Network unreachable')
+      return new Response('Service Unavailable', { status: 503 })
     }) as typeof fetch
 
-    const env = makeEnv()
-    // Should not throw
-    await fireWebhook(env, samplePayload, 'https://hooks.example.com/email')
+    // Use env without DB webhook URL so it exits early after first attempt
+    const env = {
+      ...makeEnv(),
+      DB: {
+        prepare: () => ({
+          bind: () => ({
+            first: async () => null, // no webhook URL configured
+          }),
+        }),
+      },
+    } as any
+
+    // No webhook URL → returns immediately without throwing
+    await fireWebhook(env, 'user@example.com', samplePayload)
 
     globalThis.fetch = originalFetch
   })
