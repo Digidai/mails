@@ -18,10 +18,10 @@ export async function resolveAuth(request: Request, env: Env, requireTokenTable 
   if (hasAuthTokensTable) {
     if (!token) return null
     const row = await env.DB.prepare(
-      'SELECT mailbox, scope FROM auth_tokens WHERE token = ?'
-    ).bind(token).first<{ mailbox: string; scope?: string }>()
+      'SELECT mailbox FROM auth_tokens WHERE token = ?'
+    ).bind(token).first<{ mailbox: string }>()
     if (!row) return null
-    return { mailbox: row.mailbox, scope: (row.scope === 'mailbox' ? 'mailbox' : 'full') }
+    return { mailbox: row.mailbox, scope: 'full' }
   }
 
   // /v1/* routes always require auth_tokens table — no fallback
