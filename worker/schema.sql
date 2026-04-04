@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS emails (
   attachment_search_text TEXT DEFAULT '',
   raw_storage_key TEXT,
   direction TEXT NOT NULL CHECK (direction IN ('inbound', 'outbound')),
-  status TEXT DEFAULT 'received' CHECK (status IN ('received', 'sent', 'failed', 'queued')),
+  status TEXT DEFAULT 'received' CHECK (status IN ('received', 'sent', 'failed', 'queued', 'delivered', 'bounced', 'complained', 'delivery_delayed')),
   received_at TEXT NOT NULL,
   created_at TEXT NOT NULL
 );

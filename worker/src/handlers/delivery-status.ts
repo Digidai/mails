@@ -3,6 +3,45 @@ import { recordEvent } from './events'
 import { fireWebhookWithRetry } from './webhook'
 
 /**
+ * Verify Resend webhook signature (Svix).
+ * Resend signs webhooks with svix-id, svix-timestamp, svix-signature headers.
+ * See: https://resend.com/docs/dashboard/webhooks/introduction
+ */
+async function verifyResendSignature(
+  request: Request,
+  rawBody: string,
+  secret: string,
+): Promise<boolean> {
+  const svixId = request.headers.get('svix-id')
+  const svixTimestamp = request.headers.get('svix-timestamp')
+  const svixSignature = request.headers.get('svix-signature')
+
+  if (!svixId || !svixTimestamp || !svixSignature) return false
+
+  // Reject timestamps older than 5 minutes
+  const ts = parseInt(svixTimestamp, 10)
+  const now = Math.floor(Date.now() / 1000)
+  if (Math.abs(now - ts) > 300) return false
+
+  // Svix secret is base64-encoded after "whsec_" prefix
+  const secretBytes = Uint8Array.from(atob(secret.replace(/^whsec_/, '')), c => c.charCodeAt(0))
+
+  const toSign = `${svixId}.${svixTimestamp}.${rawBody}`
+  const key = await crypto.subtle.importKey(
+    'raw', secretBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  )
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(toSign))
+  const expected = btoa(String.fromCharCode(...new Uint8Array(sig)))
+
+  // svix-signature may contain multiple signatures separated by spaces (v1,xxx v1,yyy)
+  const signatures = svixSignature.split(' ')
+  return signatures.some(s => {
+    const val = s.split(',')[1]
+    return val === expected
+  })
+}
+
+/**
  * Resend webhook callback handler.
  * POST /api/resend-webhook — receives delivery status updates from Resend.
  *
@@ -10,12 +49,23 @@ import { fireWebhookWithRetry } from './webhook'
  * email.complained, email.delivery_delayed
  *
  * Updates the email status in D1 and fires user webhooks + SSE events.
+ * Signature verified via RESEND_WEBHOOK_SECRET (Svix HMAC-SHA256).
  */
 export async function handleResendWebhook(
   request: Request,
   env: Env,
   ctx: ExecutionContext,
 ): Promise<Response> {
+  const rawBody = await request.text()
+
+  // Verify webhook signature if secret is configured
+  if (env.RESEND_WEBHOOK_SECRET) {
+    const valid = await verifyResendSignature(request, rawBody, env.RESEND_WEBHOOK_SECRET)
+    if (!valid) {
+      return Response.json({ error: 'Invalid webhook signature' }, { status: 401 })
+    }
+  }
+
   let body: {
     type: string
     created_at: string
@@ -29,7 +79,7 @@ export async function handleResendWebhook(
   }
 
   try {
-    body = await request.json()
+    body = JSON.parse(rawBody)
   } catch {
     return Response.json({ error: 'Invalid JSON' }, { status: 400 })
   }
