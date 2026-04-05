@@ -8,6 +8,10 @@
 
 [English](README.md) | [日本語](README.ja.md)
 
+<p align="center">
+  <img src="docs/demo.gif" alt="mails-agent 演示：安装、领取邮箱、发送、收件箱、验证码提取" width="720">
+</p>
+
 > **Agent 集成：** 使用 [mails-skills](https://github.com/Digidai/mails-skills) 一行命令为你的 Claude Code、OpenClaw 或任何 AI agent 添加邮件能力。
 
 ## 为什么选择 mails？

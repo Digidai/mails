@@ -8,6 +8,10 @@ Email infrastructure for AI agents. Send, receive, search, and extract verificat
 
 [日本語](README.ja.md) | [中文](README.zh.md)
 
+<p align="center">
+  <img src="docs/demo.gif" alt="mails-agent demo: install, claim, send, inbox, code extraction" width="720">
+</p>
+
 > **Agent Integration:** Use [mails-skills](https://github.com/Digidai/mails-skills) to give your Claude Code, OpenClaw, or any AI agent email capabilities with one command.
 
 ## Why mails?

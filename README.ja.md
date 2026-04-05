@@ -8,6 +8,10 @@ AIエージェント向けのメールインフラ。送信、受信、検索、
 
 [English](README.md) | [中文](README.zh.md)
 
+<p align="center">
+  <img src="docs/demo.gif" alt="mails-agent デモ：インストール、メールボックス取得、送信、受信トレイ、認証コード抽出" width="720">
+</p>
+
 > **Agent連携：** [mails-skills](https://github.com/Digidai/mails-skills) を使えば、Claude Code、OpenClaw、その他のAIエージェントにワンコマンドでメール機能を追加できます。
 
 ## なぜ mails？
