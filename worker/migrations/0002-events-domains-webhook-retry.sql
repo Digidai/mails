@@ -31,8 +31,8 @@ CREATE TABLE IF NOT EXISTS domains (
 -- Note: D1 doesn't support ALTER TABLE ADD COLUMN IF NOT EXISTS,
 -- so we use a safe approach with try/catch in the Worker init.
 -- These columns should be added manually or via wrangler d1 execute:
---
--- ALTER TABLE auth_tokens ADD COLUMN scope TEXT DEFAULT 'full';
+
+ALTER TABLE auth_tokens ADD COLUMN scope TEXT DEFAULT 'full';
 -- ALTER TABLE auth_tokens ADD COLUMN webhook_failures INTEGER DEFAULT 0;
 -- ALTER TABLE auth_tokens ADD COLUMN webhook_status TEXT DEFAULT 'active';
 

@@ -10,6 +10,8 @@ Commands:
   send          Send an email
   inbox         List received emails
   code          Wait for a verification code
+  thread        List and view email threads
+  webhook       Manage webhook configuration
   config        View or modify configuration
   help          Show this help message
   version       Show version
@@ -40,6 +42,14 @@ Inbox:
 Code:
   mails code --to <address>             Wait for a verification code
   mails code --to <address> --timeout 60
+
+Thread:
+  mails thread list               List email threads
+  mails thread <id>               View thread details
+
+Webhook:
+  mails webhook list              Show current webhook configuration
+  mails webhook set <url>         Set webhook URL for current mailbox
 
 Config:
   mails config                    Show current config

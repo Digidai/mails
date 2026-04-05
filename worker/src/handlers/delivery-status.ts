@@ -119,6 +119,22 @@ export async function handleResendWebhook(
     'UPDATE emails SET status = ? WHERE id = ?'
   ).bind(newStatus, row.id).run()
 
+  // Add to suppression list on bounce or complaint
+  if (newStatus === 'bounced' || newStatus === 'complained') {
+    const recipients = body.data.to ?? []
+    const reason = newStatus === 'bounced' ? 'bounce' : 'complaint'
+    const now = new Date().toISOString()
+    for (const recipient of recipients) {
+      try {
+        await env.DB.prepare(
+          'INSERT OR IGNORE INTO suppression_list (email, reason, created_at) VALUES (?, ?, ?)'
+        ).bind(recipient, reason, now).run()
+      } catch {
+        // suppression_list table may not exist — skip
+      }
+    }
+  }
+
   console.log(`Delivery status: email=${row.id} resend_id=${resendId} status=${newStatus}`)
 
   // Record SSE event

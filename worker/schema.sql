@@ -113,3 +113,40 @@ CREATE TABLE IF NOT EXISTS email_labels (
 CREATE INDEX IF NOT EXISTS idx_email_labels_email_id ON email_labels(email_id);
 CREATE INDEX IF NOT EXISTS idx_email_labels_label ON email_labels(label, created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_email_labels_unique ON email_labels(email_id, label);
+
+-- Suppression list for bounced/complained recipients
+CREATE TABLE IF NOT EXISTS suppression_list (
+  email TEXT PRIMARY KEY,
+  reason TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+-- Per-mailbox daily send rate limits
+CREATE TABLE IF NOT EXISTS daily_send_counts (
+  mailbox TEXT NOT NULL,
+  date TEXT NOT NULL,
+  count INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (mailbox, date)
+);
+
+-- Events table for SSE streaming
+CREATE TABLE IF NOT EXISTS events (
+  id TEXT PRIMARY KEY,
+  mailbox TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  payload TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_events_mailbox_time ON events(mailbox, created_at);
+
+-- Custom domains table
+CREATE TABLE IF NOT EXISTS domains (
+  id TEXT PRIMARY KEY,
+  domain TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'pending',
+  mx_verified INTEGER NOT NULL DEFAULT 0,
+  spf_verified INTEGER NOT NULL DEFAULT 0,
+  dkim_verified INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  verified_at TEXT
+);

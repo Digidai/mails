@@ -11,10 +11,13 @@ export async function handleSend(request: Request, env: Env, mailbox?: string): 
   let body: {
     from: string
     to: string[]
+    cc?: string[]
+    bcc?: string[]
     subject: string
     text?: string
     html?: string
     reply_to?: string
+    in_reply_to?: string
     headers?: Record<string, string>
     attachments?: Array<{ filename: string; content: string; content_type?: string; content_id?: string }>
   }
@@ -61,17 +64,86 @@ export async function handleSend(request: Request, env: Env, mailbox?: string): 
     }
   }
 
+  // Check suppression list for all recipients
+  const allRecipients = [...body.to, ...(body.cc ?? []), ...(body.bcc ?? [])]
+  try {
+    const suppressedCheck = await checkSuppressionList(env, allRecipients)
+    if (suppressedCheck) {
+      return Response.json(
+        { error: `Recipient is suppressed: ${suppressedCheck.email} (${suppressedCheck.reason})` },
+        { status: 400 }
+      )
+    }
+  } catch {
+    // suppression_list table may not exist yet — skip check
+  }
+
+  // Check per-mailbox daily send rate limit
+  if (mailbox) {
+    const rateLimitResult = await checkDailySendLimit(env, mailbox)
+    if (rateLimitResult) {
+      return Response.json(
+        { error: rateLimitResult },
+        { status: 429 }
+      )
+    }
+  }
+
+  // Resolve in_reply_to for threading
+  let threadId: string | undefined
+  let inReplyToHeader: string | undefined
+  let referencesHeader: string | undefined
+
+  if (body.in_reply_to) {
+    try {
+      const referenced = await env.DB.prepare(
+        'SELECT thread_id, message_id, in_reply_to, "references" FROM emails WHERE message_id = ? LIMIT 1'
+      ).bind(body.in_reply_to).first<{
+        thread_id: string | null
+        message_id: string | null
+        in_reply_to: string | null
+        references: string | null
+      }>()
+
+      if (referenced) {
+        threadId = referenced.thread_id ?? undefined
+        inReplyToHeader = body.in_reply_to
+        // Build References chain: existing references + the message we're replying to
+        const existingRefs = referenced.references?.trim() || ''
+        referencesHeader = existingRefs
+          ? `${existingRefs} ${body.in_reply_to}`
+          : body.in_reply_to
+      } else {
+        // Referenced message not found, still set the header
+        inReplyToHeader = body.in_reply_to
+        referencesHeader = body.in_reply_to
+      }
+    } catch {
+      // DB lookup failed — still set headers
+      inReplyToHeader = body.in_reply_to
+      referencesHeader = body.in_reply_to
+    }
+  }
+
   // Build Resend API request
   const resendBody: Record<string, unknown> = {
     from: body.from,
     to: body.to,
     subject: body.subject,
   }
+  if (body.cc?.length) resendBody.cc = body.cc
+  if (body.bcc?.length) resendBody.bcc = body.bcc
   if (body.text) resendBody.text = body.text
   if (body.html) resendBody.html = body.html
   if (body.reply_to) resendBody.reply_to = body.reply_to
-  if (body.headers && Object.keys(body.headers).length > 0) {
-    resendBody.headers = body.headers
+
+  // Merge in_reply_to / references into headers
+  const mergedHeaders: Record<string, string> = { ...(body.headers ?? {}) }
+  if (inReplyToHeader) mergedHeaders['In-Reply-To'] = inReplyToHeader
+  if (referencesHeader) mergedHeaders['References'] = referencesHeader
+
+  if (Object.keys(mergedHeaders).length > 0) {
+    resendBody.headers = mergedHeaders
   }
   if (body.attachments?.length) {
     resendBody.attachments = body.attachments.map((a) => ({
@@ -107,31 +179,48 @@ export async function handleSend(request: Request, env: Env, mailbox?: string): 
 
   const resendData = await resendRes.json() as { id: string }
 
+  // Increment daily send count after successful send
+  if (mailbox) {
+    await incrementDailySendCount(env, mailbox).catch(() => {})
+  }
+
   // Record outbound email in D1
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
   const fromEmail = extractEmail(body.from)
   const fromName = parseFromName(body.from)
   const attachmentNames = body.attachments?.map(a => a.filename).join(', ') ?? ''
+  const toAddresses = body.to.join(', ')
+  const metadata: Record<string, unknown> = {
+    resend_id: resendData.id,
+    ...(body.cc?.length ? { cc: body.cc } : {}),
+    ...(body.bcc?.length ? { bcc: body.bcc } : {}),
+  }
 
   await env.DB.prepare(`
     INSERT INTO emails (
       id, mailbox, from_address, from_name, to_address, subject,
       body_text, body_html, code, headers, metadata,
+      message_id, thread_id, in_reply_to, "references",
       has_attachments, attachment_count, attachment_names, attachment_search_text,
       direction, status, received_at, created_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, '{}', ?, ?, ?, ?, '', 'outbound', 'sent', ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', 'outbound', 'sent', ?, ?)
   `).bind(
     id,
     fromEmail,
     fromEmail,
     fromName,
-    body.to.join(', '),
+    toAddresses,
     body.subject,
     body.text ?? '',
     body.html ?? '',
-    JSON.stringify({ resend_id: resendData.id }),
+    JSON.stringify(mergedHeaders),
+    JSON.stringify(metadata),
+    null, // message_id for outbound (assigned by Resend)
+    threadId ?? null,
+    inReplyToHeader ?? null,
+    referencesHeader ?? null,
     body.attachments?.length ? 1 : 0,
     body.attachments?.length ?? 0,
     attachmentNames,
@@ -141,7 +230,59 @@ export async function handleSend(request: Request, env: Env, mailbox?: string): 
 
   console.log(`Email sent id=${id} resend_id=${resendData.id}`)
 
-  return Response.json({ id, provider_id: resendData.id })
+  return Response.json({ id, provider_id: resendData.id, thread_id: threadId ?? null })
+}
+
+/**
+ * Check suppression list for a list of recipients.
+ * Returns the first suppressed email found, or null if none are suppressed.
+ */
+export async function checkSuppressionList(
+  env: Env,
+  recipients: string[],
+): Promise<{ email: string; reason: string } | null> {
+  if (recipients.length === 0) return null
+  const placeholders = recipients.map(() => '?').join(', ')
+  const row = await env.DB.prepare(
+    `SELECT email, reason FROM suppression_list WHERE email IN (${placeholders}) LIMIT 1`
+  ).bind(...recipients).first<{ email: string; reason: string }>()
+  return row ?? null
+}
+
+/**
+ * Check daily send rate limit for a mailbox.
+ * Returns an error message if over limit, or null if OK.
+ */
+async function checkDailySendLimit(env: Env, mailbox: string): Promise<string | null> {
+  try {
+    const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+    const row = await env.DB.prepare(
+      'SELECT count FROM daily_send_counts WHERE mailbox = ? AND date = ?'
+    ).bind(mailbox, today).first<{ count: number }>()
+
+    const dailyLimit = env.DAILY_SEND_LIMIT ? parseInt(env.DAILY_SEND_LIMIT as string, 10) : 100
+    if (row && row.count >= dailyLimit) {
+      return `Daily send limit reached (${row.count}/${dailyLimit})`
+    }
+  } catch {
+    // daily_send_counts table may not exist yet — skip check
+  }
+  return null
+}
+
+/**
+ * Increment the daily send count for a mailbox.
+ */
+async function incrementDailySendCount(env: Env, mailbox: string): Promise<void> {
+  const today = new Date().toISOString().slice(0, 10)
+  try {
+    await env.DB.prepare(
+      `INSERT INTO daily_send_counts (mailbox, date, count) VALUES (?, ?, 1)
+       ON CONFLICT (mailbox, date) DO UPDATE SET count = count + 1`
+    ).bind(mailbox, today).run()
+  } catch {
+    // Table may not exist yet — skip
+  }
 }
 
 export function parseFromName(from: string): string {

@@ -14,6 +14,8 @@ import { fireWebhookWithRetry, getWebhookUrl } from './handlers/webhook'
 import { handleEvents, recordEvent } from './handlers/events'
 import { handleResendWebhook } from './handlers/delivery-status'
 import { handleDomains } from './handlers/domains'
+import { handleClaimAuto } from './handlers/claim'
+import { handleMailbox, handleMailboxPause, handleMailboxResume } from './handlers/mailbox'
 import { resolveThreadId } from './threading'
 import { detectLabels } from './auto-label'
 import { generateAndStoreEmbedding } from './embeddings'
@@ -55,12 +57,21 @@ export default {
       if (auth === null) {
         response = Response.json({ error: 'Unauthorized' }, { status: 401 })
       } else {
+        // Check if mailbox is paused (allow mailbox management endpoints through)
+        let paused = false
+        const mailboxMgmtRoutes = ['/api/mailbox', '/api/mailbox/pause', '/api/mailbox/resume']
+        if (auth.mailbox && !mailboxMgmtRoutes.includes(route)) {
+          paused = await checkMailboxStatus(env, auth.mailbox)
+        }
+
         // When mailbox is known from token, use it; otherwise fall through to ?to= param
         const mailbox = auth.mailbox ?? undefined
 
-        // /v1/* always requires mailbox binding (except /v1/me)
-        if (isV1 && !mailbox && route !== '/api/me') {
+        // /v1/* always requires mailbox binding (except /v1/me and /v1/claim/auto)
+        if (isV1 && !mailbox && route !== '/api/me' && route !== '/api/claim/auto') {
           response = Response.json({ error: 'Unauthorized' }, { status: 401 })
+        } else if (paused) {
+          response = Response.json({ error: 'Mailbox is paused' }, { status: 403 })
         } else {
           try {
             switch (route) {
@@ -147,6 +158,18 @@ export default {
                 })
                 break
               }
+              case '/api/claim/auto':
+                response = await handleClaimAuto(request, env, auth)
+                break
+              case '/api/mailbox':
+                response = await handleMailbox(request, env, mailbox)
+                break
+              case '/api/mailbox/pause':
+                response = await handleMailboxPause(request, env, mailbox)
+                break
+              case '/api/mailbox/resume':
+                response = await handleMailboxResume(request, env, mailbox)
+                break
               default:
                 // Handle sub-path routes: /api/domains/:id, /api/domains/:id/verify
                 if (route.startsWith('/api/domains/')) {
@@ -319,3 +342,19 @@ export default {
     }
   },
 } satisfies ExportedHandler<Env>
+
+/**
+ * Check if a mailbox is paused. Returns true if paused, false otherwise.
+ * Gracefully handles missing 'status' column.
+ */
+async function checkMailboxStatus(env: Env, mailbox: string): Promise<boolean> {
+  try {
+    const row = await env.DB.prepare(
+      'SELECT status FROM auth_tokens WHERE mailbox = ? LIMIT 1'
+    ).bind(mailbox).first<{ status: string | null }>()
+    return row?.status === 'paused'
+  } catch {
+    // status column may not exist yet — treat as active
+    return false
+  }
+}

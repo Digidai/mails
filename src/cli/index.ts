@@ -8,6 +8,8 @@ import { doctorCommand } from './commands/doctor.js'
 import { demoCommand } from './commands/demo.js'
 import { statsCommand } from './commands/stats.js'
 import { helpCommand } from './commands/help.js'
+import { threadCommand } from './commands/thread.js'
+import { webhookCommand } from './commands/webhook.js'
 
 const args = process.argv.slice(2)
 const command = args[0]
@@ -37,6 +39,12 @@ async function main() {
       break
     case 'stats':
       await statsCommand()
+      break
+    case 'thread':
+      await threadCommand(args.slice(1))
+      break
+    case 'webhook':
+      await webhookCommand(args.slice(1))
       break
     case 'help':
     case '--help':

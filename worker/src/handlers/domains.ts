@@ -118,6 +118,29 @@ export async function handleDomains(
     }, { status: 201 })
   }
 
+  if (request.method === 'GET' && domainId && !action) {
+    // Get single domain with DNS records
+    const row = await env.DB.prepare(
+      'SELECT * FROM domains WHERE id = ?'
+    ).bind(domainId).first<DomainRecord>()
+    if (!row) {
+      return Response.json({ error: 'Domain not found' }, { status: 404 })
+    }
+
+    const records = getDnsRecords(row.domain)
+    return Response.json({
+      id: row.id,
+      domain: row.domain,
+      status: row.status,
+      mx_verified: !!row.mx_verified,
+      spf_verified: !!row.spf_verified,
+      dkim_verified: !!row.dkim_verified,
+      created_at: row.created_at,
+      verified_at: row.verified_at,
+      dns_records: records,
+    })
+  }
+
   if (request.method === 'POST' && domainId && action === 'verify') {
     // Manual verification trigger
     const row = await env.DB.prepare(
