@@ -424,7 +424,7 @@ git clone https://github.com/Digidai/mails-skills && cd mails-skills && ./instal
 
 ## 致谢
 
-本项目基于 [mails](https://github.com/chekusu/mails)（作者 [turing](https://github.com/guo-yu)）开发。我们在此基础上新增了 mailbox 隔离、webhook 通知、删除 API、R2 附件存储、Worker 文件重构和全面的测试覆盖（231 个测试）。感谢原作者奠定的优秀基础。
+本项目基于 [mails](https://github.com/chekusu/mails)（作者 [turing](https://github.com/guo-yu)）开发。我们在此基础上新增了 mailbox 隔离、webhook 通知、删除 API、R2 附件存储、Worker 文件重构和全面的测试覆盖（349 个测试）。感谢原作者奠定的优秀基础。
 
 ## 许可证
 

@@ -422,7 +422,7 @@ git clone https://github.com/Digidai/mails-skills && cd mails-skills && ./instal
 
 ## 謝辞
 
-このプロジェクトは [turing](https://github.com/guo-yu) 氏の [mails](https://github.com/chekusu/mails) をベースに開発されています。メールボックス分離、Webhook通知、削除API、R2添付ファイルストレージ、Workerファイルリファクタリング、包括的なテストカバレッジ（231テスト）を追加しました。優れた基盤を築いてくれたオリジナル作者に感謝します。
+このプロジェクトは [turing](https://github.com/guo-yu) 氏の [mails](https://github.com/chekusu/mails) をベースに開発されています。メールボックス分離、Webhook通知、削除API、R2添付ファイルストレージ、Workerファイルリファクタリング、包括的なテストカバレッジ（349テスト）を追加しました。優れた基盤を築いてくれたオリジナル作者に感謝します。
 
 ## ライセンス
 
