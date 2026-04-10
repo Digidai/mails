@@ -40,6 +40,9 @@ export async function statsCommand() {
     emails_this_month?: number
     sends_this_month?: number
     monthly_limit?: number
+    ingest?: { pending: number; parsed: number; failed: number }
+    suppression_count?: number
+    webhook_routes?: number
   }
 
   console.log('')
@@ -56,6 +59,15 @@ export async function statsCommand() {
   }
   if (stats.sends_this_month !== undefined && stats.monthly_limit !== undefined) {
     console.log(`  Send quota:   ${stats.sends_this_month}/${stats.monthly_limit}`)
+  }
+  if (stats.ingest) {
+    console.log(`  Ingest log:   ${stats.ingest.parsed} parsed, ${stats.ingest.failed} failed, ${stats.ingest.pending} pending`)
+  }
+  if (stats.suppression_count !== undefined && stats.suppression_count > 0) {
+    console.log(`  Suppressed:   ${stats.suppression_count} addresses`)
+  }
+  if (stats.webhook_routes !== undefined && stats.webhook_routes > 0) {
+    console.log(`  Routes:       ${stats.webhook_routes} webhook routes`)
   }
   console.log('')
 }

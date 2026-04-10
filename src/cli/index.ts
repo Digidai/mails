@@ -10,6 +10,7 @@ import { statsCommand } from './commands/stats.js'
 import { helpCommand } from './commands/help.js'
 import { threadCommand } from './commands/thread.js'
 import { webhookCommand } from './commands/webhook.js'
+import { deployCommand } from './commands/deploy.js'
 
 const args = process.argv.slice(2)
 const command = args[0]
@@ -45,6 +46,9 @@ async function main() {
       break
     case 'webhook':
       await webhookCommand(args.slice(1))
+      break
+    case 'deploy':
+      await deployCommand(args.slice(1))
       break
     case 'help':
     case '--help':

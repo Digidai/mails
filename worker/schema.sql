@@ -158,6 +158,17 @@ CREATE INDEX IF NOT EXISTS idx_ingest_log_mailbox ON ingest_log(mailbox, created
 -- Inbound idempotency: prevent duplicate emails on replay/redelivery
 CREATE UNIQUE INDEX IF NOT EXISTS idx_emails_mailbox_message_id ON emails(mailbox, message_id);
 
+-- Webhook routes for per-label routing (smart email routing)
+CREATE TABLE IF NOT EXISTS webhook_routes (
+  id TEXT PRIMARY KEY,
+  mailbox TEXT NOT NULL,
+  label TEXT NOT NULL,
+  webhook_url TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_webhook_routes_unique ON webhook_routes(mailbox, label);
+CREATE INDEX IF NOT EXISTS idx_webhook_routes_mailbox ON webhook_routes(mailbox);
+
 -- Custom domains table
 CREATE TABLE IF NOT EXISTS domains (
   id TEXT PRIMARY KEY,

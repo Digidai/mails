@@ -16,6 +16,7 @@ import { handleResendWebhook } from './handlers/delivery-status'
 import { handleDomains } from './handlers/domains'
 import { handleClaimAuto } from './handlers/claim'
 import { handleMailbox, handleMailboxPause, handleMailboxResume } from './handlers/mailbox'
+import { handleWebhookRoutes } from './handlers/webhook-routes'
 import { resolveThreadId } from './threading'
 import { detectLabels } from './auto-label'
 import { generateAndStoreEmbedding } from './embeddings'
@@ -149,12 +150,37 @@ export default {
                 const monthly = await env.DB.prepare(
                   'SELECT COUNT(*) as count FROM emails WHERE mailbox = ? AND received_at >= ?'
                 ).bind(mb, thisMonth.toISOString()).first<{ count: number }>()
+                // Extended stats: ingest log, suppression, webhook routes
+                let ingestStats = { pending: 0, parsed: 0, failed: 0 }
+                let suppressionCount = 0
+                let routesCount = 0
+                try {
+                  const ingest = await env.DB.prepare(
+                    "SELECT status, COUNT(*) as count FROM ingest_log WHERE mailbox = ? GROUP BY status"
+                  ).bind(mb).all<{ status: string; count: number }>()
+                  for (const row of ingest.results ?? []) {
+                    if (row.status === 'pending') ingestStats.pending = row.count
+                    else if (row.status === 'parsed') ingestStats.parsed = row.count
+                    else if (row.status === 'failed') ingestStats.failed = row.count
+                  }
+                } catch { /* table may not exist */ }
+                try {
+                  const sup = await env.DB.prepare('SELECT COUNT(*) as count FROM suppression_list').first<{ count: number }>()
+                  suppressionCount = sup?.count ?? 0
+                } catch { /* table may not exist */ }
+                try {
+                  const routes = await env.DB.prepare('SELECT COUNT(*) as count FROM webhook_routes WHERE mailbox = ?').bind(mb).first<{ count: number }>()
+                  routesCount = routes?.count ?? 0
+                } catch { /* table may not exist */ }
                 response = Response.json({
                   mailbox: mb,
                   total_emails: total?.total ?? 0,
                   inbound: total?.inbound ?? 0,
                   outbound: total?.outbound ?? 0,
                   emails_this_month: monthly?.count ?? 0,
+                  ingest: ingestStats,
+                  suppression_count: suppressionCount,
+                  webhook_routes: routesCount,
                 })
                 break
               }
@@ -169,6 +195,9 @@ export default {
                 break
               case '/api/mailbox/resume':
                 response = await handleMailboxResume(request, env, mailbox)
+                break
+              case '/api/mailbox/routes':
+                response = await handleWebhookRoutes(request, url, env, mailbox)
                 break
               default:
                 // Handle sub-path routes: /api/domains/:id, /api/domains/:id/verify

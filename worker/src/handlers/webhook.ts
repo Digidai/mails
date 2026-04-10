@@ -1,9 +1,11 @@
 import type { Env } from '../types'
+import { getWebhookRoutes } from './webhook-routes'
 
 interface WebhookPayload {
   event: string
   email_id: string
   mailbox: string
+  labels?: string[]
   [key: string]: unknown
 }
 
@@ -51,7 +53,31 @@ export async function fireWebhookWithRetry(
   payload: WebhookPayload,
 ): Promise<void> {
   const webhookUrl = await getWebhookUrl(env, mailbox)
-  if (!webhookUrl) return
+
+  // Smart routing: check for label-specific webhook URLs
+  const labels = (payload.labels as string[] | undefined) ?? []
+  const routes = labels.length > 0 ? await getWebhookRoutes(env, mailbox) : {}
+  const labelUrls = labels.map(l => routes[l]).filter((u): u is string => !!u)
+
+  // Fire to all unique URLs (default + label-specific)
+  const allUrls = new Set<string>()
+  if (webhookUrl) allUrls.add(webhookUrl)
+  for (const u of labelUrls) allUrls.add(u)
+  if (allUrls.size === 0) return
+
+  // Fire webhooks in parallel
+  await Promise.all([...allUrls].map(url => fireToUrl(env, mailbox, url, payload)))
+}
+
+/**
+ * Fire a webhook to a single URL with retry logic.
+ */
+async function fireToUrl(
+  env: Env,
+  mailbox: string,
+  webhookUrl: string,
+  payload: WebhookPayload,
+): Promise<void> {
 
   const body = JSON.stringify(payload)
   const headers: Record<string, string> = {
