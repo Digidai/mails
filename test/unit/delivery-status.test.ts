@@ -36,11 +36,15 @@ describe('Delivery Status Handler', () => {
   test('handleResendWebhook rejects invalid JSON', async () => {
     const { handleResendWebhook } = await import('../../worker/src/handlers/delivery-status')
 
+    const bodyStr = 'not json'
+    const ts = String(Math.floor(Date.now() / 1000))
+    const sig = await signWebhook(TEST_SECRET, 'msg_test1', ts, bodyStr)
     const request = new Request('http://localhost/api/resend-webhook', {
       method: 'POST',
-      body: 'not json',
+      headers: { 'svix-id': 'msg_test1', 'svix-timestamp': ts, 'svix-signature': sig },
+      body: bodyStr,
     })
-    const env = { DB: { prepare: () => ({ bind: () => ({ first: async () => null, run: async () => ({}) }) }) } } as any
+    const env = { RESEND_WEBHOOK_SECRET: TEST_SECRET, DB: { prepare: () => ({ bind: () => ({ first: async () => null, run: async () => ({}) }) }) } } as any
     const ctx = { waitUntil: () => {} } as any
 
     const res = await handleResendWebhook(request, env, ctx)
@@ -50,12 +54,15 @@ describe('Delivery Status Handler', () => {
   test('handleResendWebhook rejects missing email_id', async () => {
     const { handleResendWebhook } = await import('../../worker/src/handlers/delivery-status')
 
+    const bodyStr = JSON.stringify({ type: 'email.sent', created_at: '2026-04-03', data: {} })
+    const ts = String(Math.floor(Date.now() / 1000))
+    const sig = await signWebhook(TEST_SECRET, 'msg_test2', ts, bodyStr)
     const request = new Request('http://localhost/api/resend-webhook', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'email.sent', created_at: '2026-04-03', data: {} }),
+      headers: { 'Content-Type': 'application/json', 'svix-id': 'msg_test2', 'svix-timestamp': ts, 'svix-signature': sig },
+      body: bodyStr,
     })
-    const env = { DB: { prepare: () => ({ bind: () => ({ first: async () => null, run: async () => ({}) }) }) } } as any
+    const env = { RESEND_WEBHOOK_SECRET: TEST_SECRET, DB: { prepare: () => ({ bind: () => ({ first: async () => null, run: async () => ({}) }) }) } } as any
     const ctx = { waitUntil: () => {} } as any
 
     const res = await handleResendWebhook(request, env, ctx)
@@ -65,12 +72,15 @@ describe('Delivery Status Handler', () => {
   test('handleResendWebhook ignores unknown event types', async () => {
     const { handleResendWebhook } = await import('../../worker/src/handlers/delivery-status')
 
+    const bodyStr = JSON.stringify({ type: 'email.opened', created_at: '2026-04-03', data: { email_id: 'abc' } })
+    const ts = String(Math.floor(Date.now() / 1000))
+    const sig = await signWebhook(TEST_SECRET, 'msg_test3', ts, bodyStr)
     const request = new Request('http://localhost/api/resend-webhook', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'email.opened', created_at: '2026-04-03', data: { email_id: 'abc' } }),
+      headers: { 'Content-Type': 'application/json', 'svix-id': 'msg_test3', 'svix-timestamp': ts, 'svix-signature': sig },
+      body: bodyStr,
     })
-    const env = { DB: { prepare: () => ({ bind: () => ({ first: async () => null, run: async () => ({}) }) }) } } as any
+    const env = { RESEND_WEBHOOK_SECRET: TEST_SECRET, DB: { prepare: () => ({ bind: () => ({ first: async () => null, run: async () => ({}) }) }) } } as any
     const ctx = { waitUntil: () => {} } as any
 
     const res = await handleResendWebhook(request, env, ctx)
@@ -168,7 +178,7 @@ describe('Delivery Status Handler', () => {
     expect(res.status).toBe(200)
   })
 
-  test('skips signature check when RESEND_WEBHOOK_SECRET is not set', async () => {
+  test('rejects webhook with 503 when RESEND_WEBHOOK_SECRET is not set', async () => {
     const { handleResendWebhook } = await import('../../worker/src/handlers/delivery-status')
 
     const request = new Request('http://localhost/api/resend-webhook', {
@@ -176,11 +186,13 @@ describe('Delivery Status Handler', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'email.unknown', created_at: '2026-04-04', data: { email_id: 'abc' } }),
     })
-    // No RESEND_WEBHOOK_SECRET in env
+    // No RESEND_WEBHOOK_SECRET in env — should be rejected
     const env = { DB: { prepare: () => ({ bind: () => ({ first: async () => null, run: async () => ({}) }) }) } } as any
     const ctx = { waitUntil: () => {} } as any
 
     const res = await handleResendWebhook(request, env, ctx)
-    expect(res.status).toBe(200)
+    expect(res.status).toBe(503)
+    const body = await res.json() as { error: string }
+    expect(body.error).toContain('not configured')
   })
 })

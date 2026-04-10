@@ -93,7 +93,7 @@ export default {
                   response = Response.json({ error: 'Method not allowed' }, { status: 405 })
                   break
                 }
-                response = await handleSend(request, env, mailbox)
+                response = await handleSend(request, env, mailbox, ctx)
                 break
               case '/api/me':
                 response = Response.json({
@@ -204,8 +204,32 @@ export default {
     const from = message.from
     const id = crypto.randomUUID()
     const now = new Date().toISOString()
+    const date = now.slice(0, 10) // YYYY-MM-DD
+
+    // Stage 1: Raw-first persistence — store raw MIME to R2 before any parsing
+    // This ensures no email is lost even if parsing fails
+    let rawKey: string | null = null
+    if (env.ATTACHMENTS) {
+      rawKey = `raw/${to}/${date}/${id}`
+      try {
+        await env.ATTACHMENTS.put(rawKey, message.raw)
+      } catch (err) {
+        console.warn(`R2 raw upload failed for ${rawKey} (degraded mode):`, err)
+        rawKey = null // Continue without raw backup
+      }
+    }
+
+    // Stage 2: Record ingestion in manifest (tracks state across stages)
+    try {
+      await env.DB.prepare(
+        'INSERT INTO ingest_log (id, mailbox, raw_key, status, from_address, to_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).bind(id, to, rawKey ?? '', 'pending', from, to, now).run()
+    } catch (err) {
+      console.warn(`Ingest log insert failed for ${id} (continuing):`, err)
+    }
 
     try {
+      // Stage 3: Parse email
       const parsed = await parseIncomingEmail(await new Response(message.raw).arrayBuffer(), id, now)
       const subject = parsed.subject || message.headers.get('subject') || ''
       const code = extractCode(`${subject} ${parsed.bodyText}`)
@@ -240,9 +264,10 @@ export default {
         }
       }
 
+      // Stage 4: Insert email into D1 (with idempotency via UNIQUE on mailbox+message_id)
       const statements = [
         env.DB.prepare(`
-          INSERT INTO emails (
+          INSERT OR IGNORE INTO emails (
             id, mailbox, from_address, from_name, to_address, subject,
             body_text, body_html, code, headers, metadata, message_id,
             thread_id, in_reply_to, "references",
@@ -265,11 +290,11 @@ export default {
           parsed.attachmentCount,
           parsed.attachmentNames,
           parsed.attachmentSearchText,
-          null, now, now
+          rawKey, now, now
         ),
         ...parsed.attachments.map((attachment) =>
           env.DB.prepare(`
-            INSERT INTO attachments (
+            INSERT OR IGNORE INTO attachments (
               id, email_id, filename, content_type, size_bytes,
               content_disposition, content_id, mime_part_index,
               text_content, text_extraction_status, storage_key, created_at
@@ -287,6 +312,16 @@ export default {
       ]
 
       await env.DB.batch(statements)
+
+      // Stage 5: Update ingest log to parsed
+      try {
+        await env.DB.prepare(
+          'UPDATE ingest_log SET status = ?, email_id = ? WHERE id = ?'
+        ).bind('parsed', id, id).run()
+      } catch (err) {
+        console.warn(`Ingest log update failed for ${id}:`, err)
+      }
+
       console.log(`Email received id=${id} to=${to} from=${from} subject="${subject.slice(0, 50)}" thread=${threadId.slice(0, 8)} labels=${labels.join(',')} attachments=${parsed.attachmentCount}`)
 
       // Insert auto-labels (separate batch — label failure should not block email storage)
@@ -328,17 +363,55 @@ export default {
         generateAndStoreEmbedding(env, id, to, subject, fromName, parsed.bodyText)
       )
     } catch (err) {
+      // Stage 3/4 failed — record failure in ingest log (raw email is safe in R2)
       console.error(`Email processing failed for id=${id} to=${to} from=${from}:`, err)
+      try {
+        const errorMsg = err instanceof Error ? err.message : String(err)
+        await env.DB.prepare(
+          'UPDATE ingest_log SET status = ?, error_message = ? WHERE id = ?'
+        ).bind('failed', errorMsg.slice(0, 1000), id).run()
+      } catch (logErr) {
+        console.error(`Ingest log failure update failed for ${id}:`, logErr)
+      }
     }
   },
-  // Scheduled handler: clean up old events (runs hourly via cron trigger)
+  // Scheduled handler: clean up old events + raw emails (runs hourly via cron trigger)
   async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    // Clean up SSE events older than 24 hours
+    const eventCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
     try {
-      const result = await env.DB.prepare('DELETE FROM events WHERE created_at < ?').bind(cutoff).run()
-      console.log(`Events cleanup: deleted ${result.meta.changes ?? 0} events older than ${cutoff}`)
+      const result = await env.DB.prepare('DELETE FROM events WHERE created_at < ?').bind(eventCutoff).run()
+      console.log(`Events cleanup: deleted ${result.meta.changes ?? 0} events older than ${eventCutoff}`)
     } catch (err) {
       console.error('Events cleanup failed:', err)
+    }
+
+    // Clean up raw email blobs older than 30 days (only for successfully parsed emails)
+    if (env.ATTACHMENTS) {
+      const rawCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+      try {
+        const parsed = await env.DB.prepare(
+          'SELECT id, raw_key FROM ingest_log WHERE status = ? AND created_at < ? AND raw_key != ?'
+        ).bind('parsed', rawCutoff, '').all<{ id: string; raw_key: string }>()
+        let deleted = 0
+        for (const row of parsed.results ?? []) {
+          try {
+            await env.ATTACHMENTS.delete(row.raw_key)
+            deleted++
+          } catch {
+            // R2 delete failures are non-critical
+          }
+        }
+        // Remove cleaned ingest_log entries
+        if (deleted > 0) {
+          await env.DB.prepare(
+            'DELETE FROM ingest_log WHERE status = ? AND created_at < ? AND raw_key != ?'
+          ).bind('parsed', rawCutoff, '').run()
+        }
+        console.log(`Raw cleanup: deleted ${deleted} raw email blobs older than 30 days`)
+      } catch (err) {
+        console.error('Raw email cleanup failed:', err)
+      }
     }
   },
 } satisfies ExportedHandler<Env>

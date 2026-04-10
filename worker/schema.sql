@@ -139,6 +139,25 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS idx_events_mailbox_time ON events(mailbox, created_at);
 
+-- Ingest log for raw-first email persistence (tracks ingestion state)
+CREATE TABLE IF NOT EXISTS ingest_log (
+  id TEXT PRIMARY KEY,
+  mailbox TEXT NOT NULL,
+  raw_key TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'parsed', 'failed')),
+  error_message TEXT,
+  from_address TEXT,
+  to_address TEXT,
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  email_id TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ingest_log_status ON ingest_log(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_ingest_log_mailbox ON ingest_log(mailbox, created_at DESC);
+
+-- Inbound idempotency: prevent duplicate emails on replay/redelivery
+CREATE UNIQUE INDEX IF NOT EXISTS idx_emails_mailbox_message_id ON emails(mailbox, message_id);
+
 -- Custom domains table
 CREATE TABLE IF NOT EXISTS domains (
   id TEXT PRIMARY KEY,

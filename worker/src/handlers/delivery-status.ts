@@ -58,12 +58,13 @@ export async function handleResendWebhook(
 ): Promise<Response> {
   const rawBody = await request.text()
 
-  // Verify webhook signature if secret is configured
-  if (env.RESEND_WEBHOOK_SECRET) {
-    const valid = await verifyResendSignature(request, rawBody, env.RESEND_WEBHOOK_SECRET)
-    if (!valid) {
-      return Response.json({ error: 'Invalid webhook signature' }, { status: 401 })
-    }
+  // Require webhook signature verification — reject if secret not configured
+  if (!env.RESEND_WEBHOOK_SECRET) {
+    return Response.json({ error: 'Webhook secret not configured' }, { status: 503 })
+  }
+  const valid = await verifyResendSignature(request, rawBody, env.RESEND_WEBHOOK_SECRET)
+  if (!valid) {
+    return Response.json({ error: 'Invalid webhook signature' }, { status: 401 })
   }
 
   let body: {

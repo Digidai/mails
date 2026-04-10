@@ -1,6 +1,6 @@
 import type { Env } from '../types'
 
-export async function handleSend(request: Request, env: Env, mailbox?: string): Promise<Response> {
+export async function handleSend(request: Request, env: Env, mailbox?: string, ctx?: ExecutionContext): Promise<Response> {
   if (!env.RESEND_API_KEY) {
     return Response.json(
       { error: 'Email sending is not available' },
@@ -64,7 +64,7 @@ export async function handleSend(request: Request, env: Env, mailbox?: string): 
     }
   }
 
-  // Check suppression list for all recipients
+  // Check suppression list for all recipients (fail-closed: reject if check fails)
   const allRecipients = [...body.to, ...(body.cc ?? []), ...(body.bcc ?? [])]
   try {
     const suppressedCheck = await checkSuppressionList(env, allRecipients)
@@ -74,8 +74,19 @@ export async function handleSend(request: Request, env: Env, mailbox?: string): 
         { status: 400 }
       )
     }
-  } catch {
-    // suppression_list table may not exist yet — skip check
+  } catch (err) {
+    // Fail-closed: if suppression check fails, reject send to protect domain reputation
+    // Exception: if suppression_list table doesn't exist yet, allow send
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.includes('no such table')) {
+      // Table not created yet — safe to proceed
+    } else {
+      console.error('Suppression check failed, rejecting send:', err)
+      return Response.json(
+        { error: 'Unable to verify recipient safety, please try again' },
+        { status: 503 }
+      )
+    }
   }
 
   // Check per-mailbox daily send rate limit
@@ -118,8 +129,9 @@ export async function handleSend(request: Request, env: Env, mailbox?: string): 
         inReplyToHeader = body.in_reply_to
         referencesHeader = body.in_reply_to
       }
-    } catch {
-      // DB lookup failed — still set headers
+    } catch (err) {
+      // DB lookup failed — still set headers, but log the error
+      console.warn('Thread resolution DB lookup failed:', err)
       inReplyToHeader = body.in_reply_to
       referencesHeader = body.in_reply_to
     }
@@ -179,56 +191,69 @@ export async function handleSend(request: Request, env: Env, mailbox?: string): 
 
   const resendData = await resendRes.json() as { id: string }
 
-  // Increment daily send count after successful send
-  if (mailbox) {
-    await incrementDailySendCount(env, mailbox).catch(() => {})
-  }
-
-  // Record outbound email in D1
+  // Return success immediately to prevent client retry causing double-send
+  // D1 recording happens asynchronously via waitUntil
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
   const fromEmail = extractEmail(body.from)
   const fromName = parseFromName(body.from)
-  const attachmentNames = body.attachments?.map(a => a.filename).join(', ') ?? ''
-  const toAddresses = body.to.join(', ')
-  const metadata: Record<string, unknown> = {
-    resend_id: resendData.id,
-    ...(body.cc?.length ? { cc: body.cc } : {}),
-    ...(body.bcc?.length ? { bcc: body.bcc } : {}),
-  }
-
-  await env.DB.prepare(`
-    INSERT INTO emails (
-      id, mailbox, from_address, from_name, to_address, subject,
-      body_text, body_html, code, headers, metadata,
-      message_id, thread_id, in_reply_to, "references",
-      has_attachments, attachment_count, attachment_names, attachment_search_text,
-      direction, status, received_at, created_at
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', 'outbound', 'sent', ?, ?)
-  `).bind(
-    id,
-    fromEmail,
-    fromEmail,
-    fromName,
-    toAddresses,
-    body.subject,
-    body.text ?? '',
-    body.html ?? '',
-    JSON.stringify(mergedHeaders),
-    JSON.stringify(metadata),
-    null, // message_id for outbound (assigned by Resend)
-    threadId ?? null,
-    inReplyToHeader ?? null,
-    referencesHeader ?? null,
-    body.attachments?.length ? 1 : 0,
-    body.attachments?.length ?? 0,
-    attachmentNames,
-    now,
-    now,
-  ).run()
 
   console.log(`Email sent id=${id} resend_id=${resendData.id}`)
+
+  // Async: record outbound email in D1 + increment daily count
+  const asyncWork = async () => {
+    try {
+      if (mailbox) {
+        await incrementDailySendCount(env, mailbox)
+      }
+      const attachmentNames = body.attachments?.map(a => a.filename).join(', ') ?? ''
+      const toAddresses = body.to.join(', ')
+      const metadata: Record<string, unknown> = {
+        resend_id: resendData.id,
+        ...(body.cc?.length ? { cc: body.cc } : {}),
+        ...(body.bcc?.length ? { bcc: body.bcc } : {}),
+      }
+      await env.DB.prepare(`
+        INSERT INTO emails (
+          id, mailbox, from_address, from_name, to_address, subject,
+          body_text, body_html, code, headers, metadata,
+          message_id, thread_id, in_reply_to, "references",
+          has_attachments, attachment_count, attachment_names, attachment_search_text,
+          direction, status, received_at, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', 'outbound', 'sent', ?, ?)
+      `).bind(
+        id,
+        fromEmail,
+        fromEmail,
+        fromName,
+        toAddresses,
+        body.subject,
+        body.text ?? '',
+        body.html ?? '',
+        JSON.stringify(mergedHeaders),
+        JSON.stringify(metadata),
+        null,
+        threadId ?? null,
+        inReplyToHeader ?? null,
+        referencesHeader ?? null,
+        body.attachments?.length ? 1 : 0,
+        body.attachments?.length ?? 0,
+        attachmentNames,
+        now,
+        now,
+      ).run()
+    } catch (err) {
+      console.error(`Failed to record outbound email id=${id} in D1:`, err)
+    }
+  }
+
+  if (ctx) {
+    ctx.waitUntil(asyncWork())
+  } else {
+    // No ExecutionContext (e.g., in tests) — run synchronously
+    await asyncWork()
+  }
 
   return Response.json({ id, provider_id: resendData.id, thread_id: threadId ?? null })
 }
@@ -264,8 +289,12 @@ async function checkDailySendLimit(env: Env, mailbox: string): Promise<string | 
     if (row && row.count >= dailyLimit) {
       return `Daily send limit reached (${row.count}/${dailyLimit})`
     }
-  } catch {
-    // daily_send_counts table may not exist yet — skip check
+  } catch (err) {
+    // Fail-open: rate limit check failure should not block sending
+    const msg = err instanceof Error ? err.message : String(err)
+    if (!msg.includes('no such table')) {
+      console.warn('Rate limit check failed (fail-open, allowing send):', err)
+    }
   }
   return null
 }
@@ -280,8 +309,11 @@ async function incrementDailySendCount(env: Env, mailbox: string): Promise<void>
       `INSERT INTO daily_send_counts (mailbox, date, count) VALUES (?, ?, 1)
        ON CONFLICT (mailbox, date) DO UPDATE SET count = count + 1`
     ).bind(mailbox, today).run()
-  } catch {
-    // Table may not exist yet — skip
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (!msg.includes('no such table')) {
+      console.warn('Failed to increment daily send count:', err)
+    }
   }
 }
 
