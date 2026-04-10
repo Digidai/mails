@@ -35,6 +35,13 @@ jobs:
           cd worker
           npx wrangler vectorize create mails-embeddings --dimensions 768 --metric cosine 2>&1 || echo "Vectorize index already exists or creation skipped"
 
+      - name: Apply D1 schema migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          D1_ID: ${{ secrets.D1_DATABASE_ID }}
+        run: cd worker && npx wrangler d1 execute "$D1_ID" --file=schema.sql --remote
+
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:
