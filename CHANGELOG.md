@@ -2,6 +2,44 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.0] - 2026-04-10
+
+### Security
+- **Webhook signature required** — `POST /api/resend-webhook` now returns 503 when `RESEND_WEBHOOK_SECRET` is not configured (was: open to all)
+- **Suppression fail-closed** — send is rejected (503) when suppression list check fails, protecting domain reputation from sending to bounced/complained addresses
+- **Inbound idempotency** — `UNIQUE INDEX` on `(mailbox, message_id)` with `INSERT OR IGNORE` prevents duplicate emails on replay/redelivery
+
+### Added
+- **Raw-first R2 persistence** — inbound emails are stored as raw MIME to R2 before parsing; if MIME parsing fails, the raw email is preserved and can be reprocessed
+- **Ingest log** — new `ingest_log` D1 table tracks email ingestion state (pending/parsed/failed) across all processing stages
+- **Send double-send prevention** — Resend success returns immediately to client; D1 outbound record written asynchronously via `waitUntil` (prevents client retry causing duplicate sends)
+- **Raw cleanup cron** — extends scheduled handler to delete R2 raw blobs older than 30 days for successfully parsed emails
+- **6 new tests** for raw-first persistence, webhook security, suppression fail-closed — total 349 across 42 files
+- **`test:e2e` script** — Worker-requiring E2E tests moved to separate command
+
+### Fixed
+- Empty `catch` blocks in send handler now log warnings for real D1 errors (distinguish from expected "table not exist" during migration)
+- Rate limit check logs warning on failure (fail-open with visibility)
+
+## [1.7.0] - 2026-04-05
+
+### Added
+- **CC/BCC support** — send emails with `cc` and `bcc` recipients
+- **In-Reply-To on send** — outbound emails can specify `in_reply_to` for proper threading
+- **SSE real-time events** — `GET /api/events` for streaming `message.received` events
+- **Delivery tracking** — Resend webhook handler updates email status (delivered/bounced/complained)
+- **Suppression list** — auto-suppress bounced/complained recipients in `suppression_list` table
+- **Per-mailbox rate limits** — `daily_send_counts` table with configurable `DAILY_SEND_LIMIT`
+- **Mailbox pause/resume** — `POST /api/mailbox/pause` and `/resume` endpoints
+- **Scoped API keys** — `scope` column on `auth_tokens` (mailbox vs full)
+- **Custom domains** — `GET/POST /api/domains` for managing sending domains with DNS verification
+- **Headless claim** — `POST /api/claim/auto` for programmatic mailbox creation
+- **Events cleanup cron** — hourly scheduled handler deletes SSE events older than 24h
+
+### Security
+- Auth scope fallback for pre-migration databases
+- Webhook signature verification for Resend callbacks (Svix HMAC-SHA256)
+
 ## [1.6.0] - 2026-03-28
 
 ### Added

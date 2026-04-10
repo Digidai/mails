@@ -20,16 +20,24 @@
 
 ## 特性
 
-- **发送邮件** — 通过 Resend，支持附件
-- **接收邮件** — 通过 Cloudflare Email Routing → Worker → D1
+- **发送邮件** — 通过 Resend，支持 CC/BCC、In-Reply-To 线程回复、附件
+- **接收邮件** — 通过 Cloudflare Email Routing → Worker → D1，raw-first R2 持久化（零邮件丢失）
 - **搜索收件箱** — FTS5 全文搜索，涵盖主题、正文、发件人、验证码
+- **语义搜索** — Workers AI + Cloudflare Vectorize 向量搜索（关键词/语义/混合模式）
+- **Dashboard 控制台** — 可视化邮件管理 UI（`mails0.com/console`）
 - **验证码自动提取** — 自动从邮件中提取 4-8 位验证码（支持中/英/日/韩）
 - **邮件会话** — 通过 In-Reply-To / References 头自动分配 `thread_id`
 - **自动标签** — 基于规则的分类：newsletter、notification、code、personal
 - **结构化数据提取** — 从邮件中提取订单、物流、日历、收据信息（基于规则，无需 LLM）
 - **附件** — CLI `--attach` 或 SDK 发送；接收时大附件自动存入 R2
-- **Webhook 通知** — 收件时 POST 到你的 URL，带 HMAC-SHA256 签名
-- **邮箱隔离** — 通过 `auth_tokens` D1 表实现按 token 绑定邮箱
+- **Webhook 通知** — 收件时 POST 到你的 URL，带 HMAC-SHA256 签名验证
+- **SSE 实时事件** — 通过 `/api/events` 订阅 `message.received` 实时事件
+- **邮箱隔离** — 通过 `auth_tokens` D1 表实现按 token 绑定邮箱，支持权限范围控制
+- **邮箱暂停/恢复** — 临时停止某个邮箱的处理
+- **抑制列表** — 自动抑制退信/投诉的收件人，保护域名信誉
+- **发送限额** — 每个邮箱每日发送上限（通过 `DAILY_SEND_LIMIT` 配置）
+- **自定义域名** — 通过 API 管理和验证自定义发送域名
+- **入站幂等** — 通过 `message_id` 去重，防止重放/重复投递
 - **删除 API** — 删除已处理邮件，级联清理附件和 R2 对象
 - **存储 Provider** — 本地 SQLite（开发用）或远程 Worker API（生产环境）
 - **零运行时依赖** — 所有 Provider 使用原生 `fetch()`
@@ -329,7 +337,9 @@ mails inbox
 |------|---------|------|
 | `AUTH_TOKEN` | 推荐 | API 鉴权 token。设置后所有 `/api/*` 端点需要 `Authorization: Bearer <token>` |
 | `RESEND_API_KEY` | 发送必须 | Resend API key（`re_...`）。Worker 通过它调用 Resend 发送邮件 |
-| `WEBHOOK_SECRET` | 可选 | HMAC-SHA256 签名密钥，用于 webhook 载荷签名（`X-Webhook-Signature` 头） |
+| `WEBHOOK_SECRET` | 可选 | HMAC-SHA256 签名密钥，用于出站 webhook 载荷签名（`X-Webhook-Signature` 头） |
+| `RESEND_WEBHOOK_SECRET` | 推荐 | Svix HMAC-SHA256 密钥，用于验证 Resend 交付回调。**未配置时所有交付 webhook 将被拒绝（503）** |
+| `DAILY_SEND_LIMIT` | 可选 | 每个邮箱每日最大发送数（默认：100） |
 
 ### Worker API 端点
 
@@ -368,7 +378,7 @@ bun test:coverage     # 含覆盖率报告
 bun test:live         # 真实 E2E（需要 .env 配置 Resend key）
 ```
 
-231 个测试，分布在 21 个测试文件中。
+349 个测试，分布在 42 个测试文件中。
 
 </details>
 

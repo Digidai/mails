@@ -2,7 +2,7 @@
 
 You can send emails, receive emails, search your inbox, and extract verification codes. Deploy on your own domain with Cloudflare (free tier). Full control, no third-party dependency.
 
-**Capabilities:** send (with attachments), receive, inbox search (FTS5), semantic search (Workers AI + Vectorize, keyword/semantic/hybrid modes), verification code extraction (EN/ZH/JA/KO), email deletion, webhook notifications, email threading, auto labels (newsletter/notification/code/personal), structured data extraction (orders, shipping, calendar, receipts), dashboard console (mails0.com/console).
+**Capabilities:** send (with CC/BCC, In-Reply-To threading, attachments), receive (raw-first R2 persistence, zero email loss), inbox search (FTS5), semantic search (Workers AI + Vectorize, keyword/semantic/hybrid modes), verification code extraction (EN/ZH/JA/KO), email deletion, webhook notifications (HMAC-SHA256 verified), SSE real-time events, email threading, auto labels (newsletter/notification/code/personal), structured data extraction (orders, shipping, calendar, receipts), mailbox pause/resume, suppression list (auto-suppress bounced/complained), per-mailbox rate limits, custom domains, inbound idempotency, scoped API keys, headless mailbox claim, dashboard console (mails0.com/console).
 
 ## Onboarding (follow these steps in order)
 

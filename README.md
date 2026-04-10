@@ -20,8 +20,8 @@ Unlike raw email APIs that only send, mails gives your agent a complete email id
 
 ## Features
 
-- **Send emails** — via Resend with attachment support
-- **Receive emails** — via Cloudflare Email Routing → Worker → D1
+- **Send emails** — via Resend with CC/BCC, In-Reply-To threading, and attachment support
+- **Receive emails** — via Cloudflare Email Routing → Worker → D1, with raw-first R2 persistence (zero email loss)
 - **Search inbox** — FTS5 full-text search across subject, body, sender, code
 - **Semantic search** — AI-powered vector search via Workers AI + Cloudflare Vectorize (keyword, semantic, hybrid modes)
 - **Dashboard console** — visual email management UI at `mails0.com/console`
@@ -30,8 +30,14 @@ Unlike raw email APIs that only send, mails gives your agent a complete email id
 - **Auto labels** — rule-based classification: newsletter, notification, code, personal
 - **Structured data extraction** — extract orders, shipping, calendar, receipts from emails (rule-based, no LLM)
 - **Attachments** — send via CLI (`--attach`) or SDK; receive with R2 storage for large files
-- **Webhook notifications** — POST to your URL on email receive, with HMAC-SHA256 signature
-- **Mailbox isolation** — per-token mailbox binding via `auth_tokens` D1 table
+- **Webhook notifications** — POST to your URL on email receive, with HMAC-SHA256 signature verification
+- **SSE real-time events** — subscribe to `message.received` events via `/api/events`
+- **Mailbox isolation** — per-token mailbox binding via `auth_tokens` D1 table with scoped keys
+- **Mailbox pause/resume** — temporarily stop processing for a mailbox
+- **Suppression list** — auto-suppress bounced/complained recipients, protects domain reputation
+- **Rate limits** — per-mailbox daily send limits (configurable via `DAILY_SEND_LIMIT`)
+- **Custom domains** — manage and verify custom sending domains via API
+- **Inbound idempotency** — deduplication via `message_id`, safe against replay/redelivery
 - **Delete API** — remove processed emails with cascade cleanup (attachments + R2)
 - **Storage providers** — local SQLite (dev) or remote Worker API (production)
 - **Zero runtime dependencies** — all providers use raw `fetch()`
@@ -331,7 +337,9 @@ Your Agent                              External sender
 |--------|----------|-------------|
 | `AUTH_TOKEN` | Recommended | API authentication token. If set, all `/api/*` endpoints require `Authorization: Bearer <token>` |
 | `RESEND_API_KEY` | Yes (for sending) | Resend API key (`re_...`). The Worker uses this to send emails via `/api/send` |
-| `WEBHOOK_SECRET` | Optional | HMAC-SHA256 key for signing webhook payloads (`X-Webhook-Signature` header) |
+| `WEBHOOK_SECRET` | Optional | HMAC-SHA256 key for signing outbound webhook payloads (`X-Webhook-Signature` header) |
+| `RESEND_WEBHOOK_SECRET` | Recommended | Svix HMAC-SHA256 secret for verifying Resend delivery callbacks. **If not set, all delivery webhooks are rejected (503).** |
+| `DAILY_SEND_LIMIT` | Optional | Max emails per mailbox per day (default: 100) |
 
 ### Worker API Endpoints
 
@@ -348,6 +356,13 @@ Your Agent                              External sender
 | `GET /api/thread?id=<id>&to=<addr>` | Get all emails in a thread |
 | `GET /api/search?to=<addr>&q=<text>&mode=hybrid` | Semantic/hybrid search (alias for inbox with mode=hybrid) |
 | `POST /api/extract` | Extract structured data (order, shipping, calendar, receipt, code) |
+| `GET /api/events?to=<addr>` | SSE stream of real-time email events |
+| `GET /api/stats?to=<addr>` | Mailbox usage statistics |
+| `GET /api/domains` | List/manage custom sending domains |
+| `POST /api/claim/auto` | Headless mailbox claim (returns API key) |
+| `GET /api/mailbox` | Mailbox info (status, settings) |
+| `POST /api/mailbox/pause` | Pause mailbox processing |
+| `POST /api/mailbox/resume` | Resume mailbox processing |
 | `GET /api/me` | Worker info and capabilities |
 | `GET /health` | Health check (always public, no auth) |
 
@@ -371,7 +386,7 @@ bun test:coverage     # With coverage report
 bun test:live         # Live E2E with real Resend + Cloudflare (requires .env)
 ```
 
-298 tests across 29 test files.
+349 tests across 42 test files.
 
 </details>
 
@@ -418,7 +433,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, project structure,
 
 ## Acknowledgments
 
-This project is based on [mails](https://github.com/chekusu/mails) by [turing](https://github.com/guo-yu), originally created as email infrastructure for AI agents. We forked and extended it with mailbox isolation, webhook notifications, delete API, R2 attachment storage, Worker file refactoring, and comprehensive test coverage (298 tests). Thank you to the original author for the excellent foundation.
+This project is based on [mails](https://github.com/chekusu/mails) by [turing](https://github.com/guo-yu), originally created as email infrastructure for AI agents. We forked and extended it with mailbox isolation, webhook notifications, delete API, R2 attachment storage, Worker file refactoring, and comprehensive test coverage (349 tests). Thank you to the original author for the excellent foundation.
 
 ## License
 
