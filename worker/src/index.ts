@@ -393,20 +393,18 @@ export default {
         const parsed = await env.DB.prepare(
           'SELECT id, raw_key FROM ingest_log WHERE status = ? AND created_at < ? AND raw_key != ?'
         ).bind('parsed', rawCutoff, '').all<{ id: string; raw_key: string }>()
-        let deleted = 0
+        const cleanedIds: string[] = []
         for (const row of parsed.results ?? []) {
           try {
             await env.ATTACHMENTS.delete(row.raw_key)
-            deleted++
+            cleanedIds.push(row.id)
           } catch {
-            // R2 delete failures are non-critical
+            // R2 delete failures are non-critical — retry next cron run
           }
         }
-        // Remove cleaned ingest_log entries
-        if (deleted > 0) {
-          await env.DB.prepare(
-            'DELETE FROM ingest_log WHERE status = ? AND created_at < ? AND raw_key != ?'
-          ).bind('parsed', rawCutoff, '').run()
+        // Remove only ingest_log entries whose R2 blobs were successfully deleted
+        for (const cleanedId of cleanedIds) {
+          await env.DB.prepare('DELETE FROM ingest_log WHERE id = ?').bind(cleanedId).run()
         }
         console.log(`Raw cleanup: deleted ${deleted} raw email blobs older than 30 days`)
       } catch (err) {
