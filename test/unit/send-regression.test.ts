@@ -249,12 +249,12 @@ describe('Inbox handler — Agent team regressions', () => {
     expect(res.status).toBe(400)
   })
 
-  test('limit=9999 clamps to 100', async () => {
+  test('limit=9999 clamps to 100 (returns 200)', async () => {
     const { handleInbox } = await import('../../worker/src/handlers/inbox')
     const url = new URL('http://localhost/v1/inbox?limit=9999')
     const res = await handleInbox(url, makeInboxEnv(), MAILBOX)
-    // Either 400 (reject) or 200 (clamp) — both are acceptable per the fix
-    expect([200, 400]).toContain(res.status)
+    // Large positive limits are clamped silently, not rejected
+    expect(res.status).toBe(200)
   })
 
   test('mode=bogus returns 400', async () => {

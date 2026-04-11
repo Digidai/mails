@@ -225,7 +225,8 @@ printf '==========================================\n'
 check_status "5.1 direction=invalid returns 400" 400 "$(curlh -H "$AUTH" "$WORKER_URL/v1/inbox?direction=invalid")"
 check_status "5.2 limit=0 returns 400"           400 "$(curlh -H "$AUTH" "$WORKER_URL/v1/inbox?limit=0")"
 check_status "5.3 limit=-1 returns 400"          400 "$(curlh -H "$AUTH" "$WORKER_URL/v1/inbox?limit=-1")"
-check_status "5.4 limit=9999 returns 400 or 200" 400 "$(curlh -H "$AUTH" "$WORKER_URL/v1/inbox?limit=9999")"
+# limit=9999 is clamped to 100, not rejected — 200 is correct
+check_status "5.4 limit=9999 clamps to 100"      200 "$(curlh -H "$AUTH" "$WORKER_URL/v1/inbox?limit=9999")"
 check_status "5.5 mode=bogus returns 400"        400 "$(curlh -H "$AUTH" "$WORKER_URL/v1/inbox?mode=bogus")"
 check_status "5.6 label=SPAM returns 400"        400 "$(curlh -H "$AUTH" "$WORKER_URL/v1/inbox?label=SPAM")"
 check_status "5.7 label=code works"              200 "$(curlh -H "$AUTH" "$WORKER_URL/v1/inbox?label=code")"
