@@ -21,6 +21,10 @@ export interface ParsedIncomingEmail {
   messageId: string | null
   inReplyTo: string | null
   references: string | null
+  /** The RFC5322 "From:" header address (e.g. "alice@example.com") */
+  fromAddress: string | null
+  /** The RFC5322 "From:" header display name (e.g. "Alice") */
+  fromName: string
   attachmentCount: number
   attachmentNames: string
   attachmentSearchText: string
@@ -38,6 +42,12 @@ export async function parseIncomingEmail(
     toAttachmentRecord(attachment, emailId, index, createdAt)
   )
 
+  // Extract RFC5322 From header (not the envelope return-path)
+  // postal-mime gives us parsed.from = { address: '...', name: '...' } if present
+  const fromHeader = parsed.from
+  const fromAddress = fromHeader?.address?.trim() || null
+  const fromName = fromHeader?.name?.trim() || ''
+
   return {
     subject: parsed.subject ?? '',
     bodyText: parsed.text ?? '',
@@ -46,6 +56,8 @@ export async function parseIncomingEmail(
     messageId: parsed.messageId ?? null,
     inReplyTo: parsed.inReplyTo ?? null,
     references: parsed.references ?? null,
+    fromAddress,
+    fromName,
     attachmentCount: attachments.length,
     attachmentNames: attachments.map((attachment) => attachment.filename).join(' '),
     attachmentSearchText: attachments

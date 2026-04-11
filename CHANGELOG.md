@@ -2,6 +2,75 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.9.1] - 2026-04-11
+
+Comprehensive bug fixes from agent team QA. Three AI agents (OpenAI Codex,
+Google Gemini, Claude subagent) ran independent black-box testing and
+a multi-agent email scenario, finding 20+ real bugs that escaped
+previous unit and E2E testing.
+
+### Security fixes
+- **P0: Cross-mailbox thread_id leak via `in_reply_to`** — `POST /v1/send`
+  with `in_reply_to` now scopes the lookup by the sender's mailbox. Without
+  the mailbox filter, a reply could inherit another tenant's `thread_id`,
+  breaking thread grouping and leaking thread identifiers across tenants.
+- **P0: HTTP method enforcement** — Added per-route method whitelist.
+  `POST /v1/me` (and any other write method on a read-only endpoint) now
+  returns 405 with `Allow:` header instead of returning 200.
+- **P1: `PATCH /v1/mailbox` webhook_url validation** — rejects `javascript:`,
+  non-URL strings, numbers. Must be valid http:// or https://.
+- **P1: `PATCH /v1/mailbox` unknown fields** — previously silently nulled
+  `webhook_url` when the body had no `webhook_url` key. Now only touches
+  fields that are explicitly present.
+- **P1: Suppression fail-closed hardening** — verified in production.
+- **P1: `/v1/code?to=` cross-mailbox rejection** — returns 403 if the
+  `?to=` param differs from the authenticated mailbox.
+
+### Data integrity fixes
+- **P1: `from_address` now uses RFC5322 From header** — inbound emails
+  previously showed the envelope return-path (e.g. `0100019d7af3...@send.mails0.com`)
+  instead of the actual sender. `emails.from_address` and `from_name` now
+  come from the parsed MIME header. Envelope is preserved in `metadata.envelope_from`.
+- **P1: Inbound idempotency** — verified via `UNIQUE (mailbox, message_id)`.
+- **P1: CJK FTS5 tokenization** — switched to `trigram case_sensitive 0`.
+  CJK search (e.g. `query=验证码`) now works. Migration 0007.
+- **P1: Short CJK query fallback** — queries <3 chars (e.g. `query=测试`)
+  fall back to LIKE on subject/body_text (trigram needs ≥3 chars).
+- **P1: extractCode date false positives** — rejects 4-digit years
+  (1900-2099) and 8-digit YYYYMMDD. "QA LANG JA 20260411" no longer
+  returns `code: "20260411"`.
+- **P1: extractCode Chinese dual delimiter** — "您的验证码是：654321"
+  (双分隔符 是：) now correctly extracts `654321`.
+- **P2: extractOrder/extractReceipt merchant** — uses cleaned domain
+  instead of local-part. Strips `send.`, `mail.`, `bounce.`, `mailer.`,
+  `email.` subdomain prefixes. "bounce@send.amazonses.com" → "amazonses.com".
+- **P2: extractOrder "is" keyword** — "total is $99.99" now extracts.
+
+### Validation fixes
+- **P0: `POST /v1/send` with `to: "string"`** — accept string for single
+  recipient (auto-wrap to array). Previously returned 500.
+- **P2: `POST /v1/send` type validation** — `from: 123` returns 400 with
+  clear message instead of 500. All body fields have explicit type checks.
+- **P2: `POST /v1/send` attachment base64** — invalid base64 content
+  rejected with 400.
+- **P2: `GET /v1/inbox` query param validation** — direction must be
+  inbound/outbound, limit must be 1-100, mode must be keyword/semantic/hybrid,
+  label must be in enum (case-insensitive).
+
+### Ergonomics
+- **P2: CORS `Access-Control-Allow-Methods`** — now includes PATCH and PUT.
+- **P2: New outbound sends** get a fresh `thread_id` instead of null.
+- **P2: `GET /v1/mailbox`** status fallback returns "unknown" instead of
+  hardcoded "active" when the status column is unavailable.
+
+### Tests
+- 371 pass, 0 fail (was 370, +1 net from 3 new regression tests covering
+  date false positives, Chinese dual delimiters, cross-mailbox code query
+  rejection, order/receipt merchant cleaning)
+- Phase 2 agent team scenario (Codex + Gemini + Claude as 3 separate
+  mailboxes) verified cross-agent send, reply threading, CC, verification
+  code extraction, and structured data extraction all work end-to-end.
+
 ## [1.9.0] - 2026-04-10
 
 ### Added

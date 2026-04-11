@@ -298,13 +298,19 @@ export default {
       const parsed = await parseIncomingEmail(await new Response(message.raw).arrayBuffer(), id, now)
       const subject = parsed.subject || message.headers.get('subject') || ''
       const code = extractCode(`${subject} ${parsed.bodyText}`)
-      const fromName = parseFromName(message.headers.get('from') ?? from)
+
+      // Prefer the RFC5322 From header (real sender) over the envelope return-path.
+      // Cloudflare Email Routing / Resend rewrite the envelope, so `message.from`
+      // often points to an amazonses.com bounce address. For display and filtering,
+      // users want the actual sender.
+      const realFrom = parsed.fromAddress ?? from
+      const fromName = parsed.fromName || parseFromName(message.headers.get('from') ?? from)
 
       // Threading: resolve thread_id from In-Reply-To / References headers
       const threadId = await resolveThreadId(parsed.inReplyTo, parsed.references, parsed.messageId, env.DB, to)
 
-      // Auto-labeling
-      const labels = detectLabels(from, parsed.headers, code)
+      // Auto-labeling — use parsed From address for accurate label detection
+      const labels = detectLabels(realFrom, parsed.headers, code)
 
       // Upload large attachments to R2
       for (const att of parsed.attachments) {
@@ -341,12 +347,12 @@ export default {
           )
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'inbound', 'received', ?, ?)
         `).bind(
-          id, to, from, fromName, to, subject,
+          id, to, realFrom, fromName, to, subject,
           parsed.bodyText.slice(0, 50000),
           parsed.bodyHtml.slice(0, 100000),
           code,
           JSON.stringify(parsed.headers),
-          JSON.stringify({}),
+          JSON.stringify({ envelope_from: from }),
           parsed.messageId,
           threadId,
           parsed.inReplyTo,
@@ -387,7 +393,7 @@ export default {
         console.warn(`Ingest log update failed for ${id}:`, err)
       }
 
-      console.log(`Email received id=${id} to=${to} from=${from} subject="${subject.slice(0, 50)}" thread=${threadId.slice(0, 8)} labels=${labels.join(',')} attachments=${parsed.attachmentCount}`)
+      console.log(`Email received id=${id} to=${to} from=${realFrom} (envelope=${from}) subject="${subject.slice(0, 50)}" thread=${threadId.slice(0, 8)} labels=${labels.join(',')} attachments=${parsed.attachmentCount}`)
 
       // Insert auto-labels (separate batch — label failure should not block email storage)
       if (labels.length > 0) {
@@ -409,7 +415,7 @@ export default {
         event: 'message.received',
         email_id: id,
         mailbox: to,
-        from,
+        from: realFrom,
         subject,
         received_at: now,
         message_id: parsed.messageId,
@@ -429,7 +435,7 @@ export default {
       )
     } catch (err) {
       // Stage 3/4 failed — record failure in ingest log (raw email is safe in R2)
-      console.error(`Email processing failed for id=${id} to=${to} from=${from}:`, err)
+      console.error(`Email processing failed for id=${id} to=${to} envelope=${from}:`, err)
       try {
         const errorMsg = err instanceof Error ? err.message : String(err)
         await env.DB.prepare(

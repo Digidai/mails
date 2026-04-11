@@ -286,7 +286,9 @@ describe('extractStructuredData', () => {
       }
     })
 
-    test('receipt with empty fromName falls back to from address local part', () => {
+    test('receipt with empty fromName falls back to cleaned domain', () => {
+      // New behavior: prefer domain over local-part because local-part is
+      // often garbage (e.g. "noreply", "0100019d7af..." SES Message-ID prefix)
       const result = extractStructuredData(
         'receipt',
         'Receipt',
@@ -296,11 +298,12 @@ describe('extractStructuredData', () => {
         []
       )
       if (result.type === 'receipt') {
-        expect(result.merchant).toBe('billing')
+        expect(result.merchant).toBe('acme.com')
       }
     })
 
-    test('order with empty fromName falls back to from address local part', () => {
+    test('order with empty fromName falls back to cleaned domain', () => {
+      // Same: domain is more recognizable than local-part as a merchant name
       const result = extractStructuredData(
         'order',
         'Order #X1234',
@@ -310,7 +313,21 @@ describe('extractStructuredData', () => {
         []
       )
       if (result.type === 'order') {
-        expect(result.merchant).toBe('orders')
+        expect(result.merchant).toBe('shop.com')
+      }
+    })
+
+    test('order with send.* subdomain strips the prefix', () => {
+      const result = extractStructuredData(
+        'order',
+        'Order #X9999',
+        'Total: $50.00',
+        'bounce@send.amazonses.com',
+        '',
+        []
+      )
+      if (result.type === 'order') {
+        expect(result.merchant).toBe('amazonses.com')
       }
     })
 

@@ -102,12 +102,25 @@ function extractOrder(text: string, fromName: string, fromAddress: string): Orde
   // (prevents "senderlocalpart" being returned as merchant for non-order emails)
   const hasOrderContent = orderIdMatch || totalMatch
 
+  // Prefer fromName (display name) over local-part of email address.
+  // Local-part is often garbage like "noreply" or "0100019d7af3a45c-..."
+  // (SES Message-ID prefix). Domain is more recognizable as a merchant name.
+  const merchantDisplay = (() => {
+    if (fromName?.trim()) return fromName.trim()
+    if (!fromAddress) return null
+    const at = fromAddress.indexOf('@')
+    if (at < 0) return fromAddress
+    const domain = fromAddress.slice(at + 1)
+    // Strip "send." / "mail." / "mailer." / "bounce." prefixes for cleaner merchant names
+    return domain.replace(/^(?:send|mail|mailer|bounce|email)\./, '')
+  })()
+
   return {
     type: 'order',
     order_id: orderIdMatch?.[1] ?? null,
     total: totalMatch?.[1]?.replace(/,/g, '') ?? null,
     currency: hasOrderContent ? normalizeCurrency(currencyMatch?.[0] ?? null) : null,
-    merchant: hasOrderContent ? (fromName?.trim() || fromAddress.split('@')[0] || null) : null,
+    merchant: hasOrderContent ? merchantDisplay : null,
     items: [],
   }
 }
@@ -255,9 +268,19 @@ function extractReceipt(text: string, subject: string, fromName: string, fromAdd
   // Otherwise return null to avoid misleading "merchant: senderlocalpart" output.
   const hasReceiptContent = amountMatch || dateMatch || paymentMatch
 
+  // Merchant display: prefer fromName, else cleaned domain (never localpart alone).
+  const merchantDisplay = (() => {
+    if (fromName?.trim()) return fromName.trim()
+    if (!fromAddress) return null
+    const at = fromAddress.indexOf('@')
+    if (at < 0) return fromAddress
+    const domain = fromAddress.slice(at + 1)
+    return domain.replace(/^(?:send|mail|mailer|bounce|email)\./, '')
+  })()
+
   return {
     type: 'receipt',
-    merchant: hasReceiptContent ? (fromName?.trim() || fromAddress.split('@')[0] || null) : null,
+    merchant: hasReceiptContent ? merchantDisplay : null,
     amount: amountMatch?.[1]?.replace(/,/g, '') ?? amountMatch?.[2]?.replace(/,/g, '') ?? null,
     currency: hasReceiptContent ? normalizeCurrency(currencyMatch?.[0] ?? null) : null,
     date: dateMatch?.[1]?.trim() ?? null,

@@ -187,9 +187,15 @@ export async function handleSend(request: Request, env: Env, mailbox?: string, c
 
   if (body.in_reply_to) {
     try {
-      const referenced = await env.DB.prepare(
-        'SELECT thread_id, message_id, in_reply_to, "references" FROM emails WHERE message_id = ? LIMIT 1'
-      ).bind(body.in_reply_to).first<{
+      // CRITICAL: scope this query to the sender's mailbox. Without the mailbox
+      // filter, an in_reply_to could pull another tenant's thread_id — cross-mailbox
+      // leak + broken thread grouping (a reply would not share the thread of the
+      // original in the sender's own mailbox).
+      const sql = mailbox
+        ? 'SELECT thread_id, message_id, in_reply_to, "references" FROM emails WHERE message_id = ? AND mailbox = ? LIMIT 1'
+        : 'SELECT thread_id, message_id, in_reply_to, "references" FROM emails WHERE message_id = ? LIMIT 1'
+      const params = mailbox ? [body.in_reply_to, mailbox] : [body.in_reply_to]
+      const referenced = await env.DB.prepare(sql).bind(...params).first<{
         thread_id: string | null
         message_id: string | null
         in_reply_to: string | null
@@ -205,7 +211,8 @@ export async function handleSend(request: Request, env: Env, mailbox?: string, c
           ? `${existingRefs} ${body.in_reply_to}`
           : body.in_reply_to
       } else {
-        // Referenced message not found, still set the header
+        // Referenced message not in this mailbox, still set the header for
+        // downstream clients but do NOT inherit a thread_id from elsewhere.
         inReplyToHeader = body.in_reply_to
         referencesHeader = body.in_reply_to
       }
@@ -215,6 +222,12 @@ export async function handleSend(request: Request, env: Env, mailbox?: string, c
       inReplyToHeader = body.in_reply_to
       referencesHeader = body.in_reply_to
     }
+  }
+
+  // If no thread_id was inherited from an existing thread, generate a fresh one
+  // so every outbound email has a thread_id (fixes thread_id=null in response).
+  if (!threadId) {
+    threadId = crypto.randomUUID()
   }
 
   // Build Resend API request
