@@ -45,4 +45,19 @@ describe('extractCode', () => {
   test('handles mixed content', () => {
     expect(extractCode('Subject: Login 验证码：998877 please check')).toBe('998877')
   })
+
+  test('does not capture word after "verification code" when numeric code follows', () => {
+    // Regression: subject "Your verification code" + body "Your code is 824593" was
+    // capturing "Your" because the first pattern allowed whitespace as delimiter.
+    expect(extractCode('Your verification code Your code is 824593. Valid for 10 minutes.')).toBe('824593')
+  })
+
+  test('does not match word tokens after label', () => {
+    // The label "verification code" followed by "Your" (a word) should NOT be captured.
+    expect(extractCode('verification code Your email is ready')).toBeNull()
+  })
+
+  test('still captures numeric code after label without colon', () => {
+    expect(extractCode('verification code is 987654')).toBe('987654')
+  })
 })

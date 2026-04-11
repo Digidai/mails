@@ -77,12 +77,16 @@ CREATE TRIGGER IF NOT EXISTS emails_fts_ad AFTER DELETE ON emails BEGIN
   VALUES ('delete', old.rowid, old.subject, old.from_name, old.from_address, old.body_text, old.code);
 END;
 
--- Auth tokens for mailbox isolation (optional — table may not exist in older deployments)
+-- Auth tokens for mailbox isolation (full schema for fresh deployments)
 CREATE TABLE IF NOT EXISTS auth_tokens (
   token TEXT PRIMARY KEY,
   mailbox TEXT NOT NULL,
   webhook_url TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  scope TEXT DEFAULT 'full',
+  status TEXT DEFAULT 'active',
+  webhook_failures INTEGER DEFAULT 0,
+  webhook_status TEXT DEFAULT 'active'
 );
 
 CREATE INDEX IF NOT EXISTS idx_auth_tokens_mailbox ON auth_tokens(mailbox);

@@ -39,7 +39,25 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: cd worker && npx wrangler d1 execute mails --file=schema.sql --remote
+        run: |
+          cd worker
+          # Run base schema (CREATE TABLE IF NOT EXISTS is idempotent)
+          npx wrangler d1 execute mails --file=schema.sql --remote
+          # Run each migration with error tolerance (ALTER TABLE is not idempotent
+          # in D1, so "duplicate column" errors are expected on existing DBs)
+          for migration in migrations/*.sql; do
+            if [ -f "$migration" ]; then
+              echo "Applying $migration..."
+              npx wrangler d1 execute mails --file="$migration" --remote 2>&1 | tee /tmp/migration.log || {
+                if grep -q "duplicate column name" /tmp/migration.log; then
+                  echo "  Column already exists — skipping (expected for existing DB)"
+                else
+                  echo "  Migration failed with unexpected error"
+                  cat /tmp/migration.log
+                fi
+              }
+            fi
+          done
 
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
