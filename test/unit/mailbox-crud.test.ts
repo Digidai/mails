@@ -78,4 +78,82 @@ describe('Mailbox PATCH/DELETE', () => {
     const res = await handleMailbox(request, env)
     expect(res.status).toBe(400)
   })
+
+  // Regression tests for Phase 1/2 Agent team findings
+  const makeRequest = (body: unknown) => new Request('http://localhost/api/mailbox', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const stubEnv = () => ({
+    DB: {
+      prepare: () => ({
+        bind: () => ({
+          run: async () => ({ meta: { changes: 1 } }),
+          first: async () => ({ mailbox: 'test@test.com', webhook_url: 'https://existing.com/hook' }),
+        }),
+      }),
+    },
+  } as any)
+
+  test('PATCH rejects javascript: URL (XSS prevention)', async () => {
+    const { handleMailbox } = await import('../../worker/src/handlers/mailbox')
+    const res = await handleMailbox(makeRequest({ webhook_url: 'javascript:alert(1)' }), stubEnv(), 'test@test.com')
+    expect(res.status).toBe(400)
+    const data = await res.json() as { error: string }
+    expect(data.error).toMatch(/http|https/i)
+  })
+
+  test('PATCH rejects non-URL string', async () => {
+    const { handleMailbox } = await import('../../worker/src/handlers/mailbox')
+    const res = await handleMailbox(makeRequest({ webhook_url: 'not-a-url' }), stubEnv(), 'test@test.com')
+    expect(res.status).toBe(400)
+  })
+
+  test('PATCH rejects numeric webhook_url', async () => {
+    const { handleMailbox } = await import('../../worker/src/handlers/mailbox')
+    const res = await handleMailbox(makeRequest({ webhook_url: 123 }), stubEnv(), 'test@test.com')
+    expect(res.status).toBe(400)
+  })
+
+  test('PATCH accepts null to clear webhook_url', async () => {
+    const { handleMailbox } = await import('../../worker/src/handlers/mailbox')
+    const res = await handleMailbox(makeRequest({ webhook_url: null }), stubEnv(), 'test@test.com')
+    expect(res.status).toBe(200)
+  })
+
+  test('PATCH accepts empty string to clear webhook_url', async () => {
+    const { handleMailbox } = await import('../../worker/src/handlers/mailbox')
+    const res = await handleMailbox(makeRequest({ webhook_url: '' }), stubEnv(), 'test@test.com')
+    expect(res.status).toBe(200)
+  })
+
+  test('PATCH ignores unknown fields (does NOT null webhook_url)', async () => {
+    // Regression: PATCH {random_field: "xyz"} previously nulled webhook_url.
+    // Now it should return current state with a "nothing updated" note.
+    const { handleMailbox } = await import('../../worker/src/handlers/mailbox')
+    const res = await handleMailbox(makeRequest({ random_field: 'xyz' }), stubEnv(), 'test@test.com')
+    expect(res.status).toBe(200)
+    const data = await res.json() as { webhook_url: string; note?: string }
+    expect(data.webhook_url).toBe('https://existing.com/hook')
+    expect(data.note).toContain('No recognized fields')
+  })
+
+  test('PATCH rejects array body', async () => {
+    const { handleMailbox } = await import('../../worker/src/handlers/mailbox')
+    const res = await handleMailbox(makeRequest([1, 2, 3]), stubEnv(), 'test@test.com')
+    expect(res.status).toBe(400)
+  })
+
+  test('PATCH accepts http:// URL', async () => {
+    const { handleMailbox } = await import('../../worker/src/handlers/mailbox')
+    const res = await handleMailbox(makeRequest({ webhook_url: 'http://example.com/hook' }), stubEnv(), 'test@test.com')
+    expect(res.status).toBe(200)
+  })
+
+  test('PATCH accepts https:// URL', async () => {
+    const { handleMailbox } = await import('../../worker/src/handlers/mailbox')
+    const res = await handleMailbox(makeRequest({ webhook_url: 'https://example.com/hook' }), stubEnv(), 'test@test.com')
+    expect(res.status).toBe(200)
+  })
 })

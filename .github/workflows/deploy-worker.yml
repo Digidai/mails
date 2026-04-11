@@ -65,3 +65,15 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: worker
+
+      - name: Post-deploy smoke test
+        # Wait briefly for the new Worker version to propagate, then run the
+        # integration smoke test. This catches deploy-breaking config issues
+        # that unit tests can't (e.g. missing secrets, schema drift, routing bugs).
+        # If this fails, the whole deploy is marked failed so you notice.
+        run: |
+          sleep 10
+          chmod +x test/integration/api-smoke.sh
+          WORKER_URL=https://mails-worker.genedai.workers.dev \
+          CLAIM_URL=https://mails0.com \
+          ./test/integration/api-smoke.sh
