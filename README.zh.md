@@ -38,6 +38,9 @@
 - **发送限额** — 每个邮箱每日发送上限（通过 `DAILY_SEND_LIMIT` 配置）
 - **自定义域名** — 通过 API 管理和验证自定义发送域名
 - **入站幂等** — 通过 `message_id` 去重，防止重放/重复投递
+- **智能邮件路由** — 按标签配置 webhook URL，不同类型邮件（code/newsletter/notification/personal）路由到不同端点
+- **邮箱 CRUD** — `PATCH /api/mailbox` 更新 webhook URL，`DELETE /api/mailbox` 级联删除
+- **一键部署** — `mails deploy` 自动化整个自部署流程（D1、secrets、Worker）
 - **删除 API** — 删除已处理邮件，级联清理附件和 R2 对象
 - **存储 Provider** — 本地 SQLite（开发用）或远程 Worker API（生产环境）
 - **零运行时依赖** — 所有 Provider 使用原生 `fetch()`
@@ -378,7 +381,7 @@ bun test:coverage     # 含覆盖率报告
 bun test:live         # 真实 E2E（需要 .env 配置 Resend key）
 ```
 
-349 个测试，分布在 42 个测试文件中。
+360 个测试，分布在 44 个测试文件中。
 
 </details>
 
@@ -424,7 +427,7 @@ git clone https://github.com/Digidai/mails-skills && cd mails-skills && ./instal
 
 ## 致谢
 
-本项目基于 [mails](https://github.com/chekusu/mails)（作者 [turing](https://github.com/guo-yu)）开发。我们在此基础上新增了 mailbox 隔离、webhook 通知、删除 API、R2 附件存储、Worker 文件重构和全面的测试覆盖（349 个测试）。感谢原作者奠定的优秀基础。
+本项目基于 [mails](https://github.com/chekusu/mails)（作者 [turing](https://github.com/guo-yu)）开发。我们在此基础上新增了 mailbox 隔离、webhook 通知、删除 API、R2 附件存储、Worker 文件重构和全面的测试覆盖（360 个测试）。感谢原作者奠定的优秀基础。
 
 ## 许可证
 

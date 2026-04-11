@@ -38,6 +38,9 @@ AIエージェント向けのメールインフラ。送信、受信、検索、
 - **レート制限** — メールボックス別の日次送信制限（`DAILY_SEND_LIMIT`で設定可能）
 - **カスタムドメイン** — API経由でカスタム送信ドメインの管理・検証
 - **受信冪等性** — `message_id`による重複排除、リプレイ/再配信に対して安全
+- **スマートメールルーティング** — ラベル別 webhook URL、異なるタイプのメール（code/newsletter/notification/personal）を異なるエンドポイントにルーティング
+- **メールボックス CRUD** — `PATCH /api/mailbox`で webhook URL 更新、`DELETE /api/mailbox`でカスケード削除
+- **ワンクリックデプロイ** — `mails deploy`でセルフホスティング全体を自動化（D1、secrets、Worker）
 - **削除API** — 処理済みメールの削除、添付ファイルとR2オブジェクトのカスケード削除
 - **ストレージプロバイダー** — ローカルSQLite（開発用）またはリモートWorker API（本番）
 - **ランタイム依存関係ゼロ** — すべてのプロバイダーがネイティブ `fetch()` を使用
@@ -376,7 +379,7 @@ bun test:coverage     # カバレッジレポート付き
 bun test:live         # リアルE2E（.envにResendキーが必要）
 ```
 
-349テスト、42テストファイル。
+360テスト、44テストファイル。
 
 </details>
 
@@ -422,7 +425,7 @@ git clone https://github.com/Digidai/mails-skills && cd mails-skills && ./instal
 
 ## 謝辞
 
-このプロジェクトは [turing](https://github.com/guo-yu) 氏の [mails](https://github.com/chekusu/mails) をベースに開発されています。メールボックス分離、Webhook通知、削除API、R2添付ファイルストレージ、Workerファイルリファクタリング、包括的なテストカバレッジ（349テスト）を追加しました。優れた基盤を築いてくれたオリジナル作者に感謝します。
+このプロジェクトは [turing](https://github.com/guo-yu) 氏の [mails](https://github.com/chekusu/mails) をベースに開発されています。メールボックス分離、Webhook通知、削除API、R2添付ファイルストレージ、Workerファイルリファクタリング、包括的なテストカバレッジ（360テスト）を追加しました。優れた基盤を築いてくれたオリジナル作者に感謝します。
 
 ## ライセンス
 

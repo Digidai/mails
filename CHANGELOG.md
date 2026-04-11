@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.9.0] - 2026-04-10
+
+### Added
+- **Mailbox management** — `PATCH /api/mailbox` to update webhook_url, `DELETE /api/mailbox` for full cascade delete (emails, attachments, labels, ingest_log, routes, auth_tokens)
+- **Smart email routing** — per-label webhook URLs via new `webhook_routes` table. `PUT /api/mailbox/routes` to set label-specific webhooks (code, newsletter, notification, personal). Webhooks fire to all matching URLs in parallel (default + label-specific)
+- **One-click deploy CLI** — `mails deploy` automates the full self-hosting setup: D1 creation, schema migration, secret setup (RESEND_API_KEY + AUTH_TOKEN), and Worker deployment via wrangler
+- **Enhanced stats** — `/api/stats` now returns ingest_log counts (pending/parsed/failed), suppression_list count, webhook_routes count. CLI `mails stats` displays the new fields
+- **CF Email Service research** — `docs/cf-email-research.md` documents findings, integration plan, and blockers (waiting for GA)
+- **11 new tests** (4 mailbox CRUD + 7 webhook routes) — total 360 across 44 files
+
+### Changed
+- `fireWebhookWithRetry` now dispatches webhooks in parallel to default URL + label-specific URLs
+
 ## [1.8.0] - 2026-04-10
 
 ### Security

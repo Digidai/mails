@@ -38,6 +38,9 @@ Unlike raw email APIs that only send, mails gives your agent a complete email id
 - **Rate limits** — per-mailbox daily send limits (configurable via `DAILY_SEND_LIMIT`)
 - **Custom domains** — manage and verify custom sending domains via API
 - **Inbound idempotency** — deduplication via `message_id`, safe against replay/redelivery
+- **Smart email routing** — per-label webhook URLs, route different email types (code/newsletter/notification/personal) to different endpoints
+- **Mailbox CRUD** — update webhook URL via `PATCH /api/mailbox`, cascade delete via `DELETE /api/mailbox`
+- **One-click deploy** — `mails deploy` automates the entire self-hosting setup (D1, secrets, Worker) via wrangler
 - **Delete API** — remove processed emails with cascade cleanup (attachments + R2)
 - **Storage providers** — local SQLite (dev) or remote Worker API (production)
 - **Zero runtime dependencies** — all providers use raw `fetch()`
@@ -146,6 +149,17 @@ mails config                    # Show all config
 mails config set <key> <value>  # Set a value
 mails config get <key>          # Get a value
 ```
+
+### deploy
+
+One-click self-hosting setup. Automates D1 creation, schema migration, secret setup, and Worker deployment.
+
+```bash
+cd worker
+mails deploy                    # Automated setup via wrangler
+```
+
+Prerequisites: `wrangler login` and a Cloudflare account. The command generates a random AUTH_TOKEN and prompts for RESEND_API_KEY.
 
 ## SDK Usage
 
@@ -361,8 +375,13 @@ Your Agent                              External sender
 | `GET /api/domains` | List/manage custom sending domains |
 | `POST /api/claim/auto` | Headless mailbox claim (returns API key) |
 | `GET /api/mailbox` | Mailbox info (status, settings) |
+| `PATCH /api/mailbox` | Update mailbox webhook_url |
+| `DELETE /api/mailbox` | Cascade delete mailbox and all its data |
 | `POST /api/mailbox/pause` | Pause mailbox processing |
 | `POST /api/mailbox/resume` | Resume mailbox processing |
+| `GET /api/mailbox/routes` | List label-specific webhook routes |
+| `PUT /api/mailbox/routes` | Upsert label-specific webhook route |
+| `DELETE /api/mailbox/routes?label=` | Delete label-specific webhook route |
 | `GET /api/me` | Worker info and capabilities |
 | `GET /health` | Health check (always public, no auth) |
 
@@ -386,7 +405,7 @@ bun test:coverage     # With coverage report
 bun test:live         # Live E2E with real Resend + Cloudflare (requires .env)
 ```
 
-349 tests across 42 test files.
+360 tests across 44 test files.
 
 </details>
 
@@ -433,7 +452,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, project structure,
 
 ## Acknowledgments
 
-This project is based on [mails](https://github.com/chekusu/mails) by [turing](https://github.com/guo-yu), originally created as email infrastructure for AI agents. We forked and extended it with mailbox isolation, webhook notifications, delete API, R2 attachment storage, Worker file refactoring, and comprehensive test coverage (349 tests). Thank you to the original author for the excellent foundation.
+This project is based on [mails](https://github.com/chekusu/mails) by [turing](https://github.com/guo-yu), originally created as email infrastructure for AI agents. We forked and extended it with mailbox isolation, webhook notifications, delete API, R2 attachment storage, Worker file refactoring, and comprehensive test coverage (360 tests). Thank you to the original author for the excellent foundation.
 
 ## License
 
