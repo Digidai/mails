@@ -36,7 +36,9 @@ describe('extractStructuredData', () => {
       }
     })
 
-    test('handles missing order data gracefully', () => {
+    test('handles missing order data gracefully (returns null merchant)', () => {
+      // New behavior: if no order_id or total is found, merchant is null too
+      // to avoid misleading "merchant: senderlocalpart" for unrelated emails.
       const result = extractStructuredData(
         'order',
         'Thanks for shopping',
@@ -48,7 +50,7 @@ describe('extractStructuredData', () => {
       if (result.type === 'order') {
         expect(result.order_id).toBeNull()
         expect(result.total).toBeNull()
-        expect(result.merchant).toBe('Store')
+        expect(result.merchant).toBeNull()
       }
     })
   })

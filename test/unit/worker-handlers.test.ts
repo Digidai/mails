@@ -121,7 +121,8 @@ describe('handleSend', () => {
     const res = await handleSend(req, env)
     expect(res.status).toBe(400)
     const data = await res.json() as { error: string }
-    expect(data.error).toContain('Missing required fields')
+    // New type-strict validation returns a more specific error
+    expect(data.error).toMatch(/Field "from"|Missing required fields/)
   })
 
   test('returns 400 when missing required field: to', async () => {
@@ -1140,15 +1141,27 @@ describe('handleGetCode', () => {
     expect(data.code).toBeNull()
   }, 10000)
 
-  test('uses mailbox argument when provided', async () => {
+  test('uses mailbox argument when provided (no cross-mailbox ?to=)', async () => {
+    // New behavior: if auth mailbox is set and ?to= differs, reject with 403.
+    // If ?to= matches, it's OK.
     const codeRow = { id: 'e1', code: '999', from_address: 'a@b.com', subject: 'Code', received_at: '2026-01-01T00:00:00Z' }
     const stmt = mockStatement(codeRow)
     const db = mockDB(() => stmt)
     const env = makeEnv({ DB: db })
-    const url = new URL('https://worker.test/api/code?to=ignored@test.com&timeout=1')
+    // Omit ?to= to use the mailbox argument
+    const url = new URL('https://worker.test/api/code?timeout=1')
     const res = await handleGetCode(url, env, 'actual@mailbox.com')
     expect(res.status).toBe(200)
     const bindArgs = (stmt.bind as any).mock.calls[0]
     expect(bindArgs[0]).toBe('actual@mailbox.com')
+  })
+
+  test('rejects cross-mailbox ?to= when authenticated', async () => {
+    const env = makeEnv({})
+    const url = new URL('https://worker.test/api/code?to=other@mailbox.com&timeout=1')
+    const res = await handleGetCode(url, env, 'actual@mailbox.com')
+    expect(res.status).toBe(403)
+    const data = await res.json() as { error: string }
+    expect(data.error).toContain('scoped to')
   })
 })

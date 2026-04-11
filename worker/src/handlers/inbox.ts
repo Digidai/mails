@@ -5,14 +5,70 @@ export async function handleInbox(url: URL, env: Env, mailbox?: string): Promise
   const to = mailbox ?? url.searchParams.get('to')
   if (!to) return Response.json({ error: 'Missing ?to= parameter' }, { status: 400 })
 
-  const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '20', 10) || 20, 100)
-  const offset = parseInt(url.searchParams.get('offset') ?? '0', 10) || 0
-  const direction = url.searchParams.get('direction')
+  // Validate and clamp limit: must be positive integer, 1..100
+  const rawLimit = url.searchParams.get('limit')
+  let limit = 20
+  if (rawLimit !== null) {
+    const n = parseInt(rawLimit, 10)
+    if (isNaN(n) || n < 1) {
+      return Response.json(
+        { error: 'limit must be a positive integer (1-100)' },
+        { status: 400 }
+      )
+    }
+    limit = Math.min(n, 100)
+  }
+
+  // Validate offset: non-negative integer
+  const rawOffset = url.searchParams.get('offset')
+  let offset = 0
+  if (rawOffset !== null) {
+    const n = parseInt(rawOffset, 10)
+    if (isNaN(n) || n < 0) {
+      return Response.json(
+        { error: 'offset must be a non-negative integer' },
+        { status: 400 }
+      )
+    }
+    offset = n
+  }
+
+  // Validate direction: must be inbound, outbound, or omitted
+  const rawDirection = url.searchParams.get('direction')
+  let direction: string | null = null
+  if (rawDirection !== null && rawDirection !== '') {
+    if (rawDirection !== 'inbound' && rawDirection !== 'outbound') {
+      return Response.json(
+        { error: 'direction must be "inbound" or "outbound"' },
+        { status: 400 }
+      )
+    }
+    direction = rawDirection
+  }
+
   const query = url.searchParams.get('query')?.trim()
-  const label = url.searchParams.get('label')?.trim()
+
+  // Normalize label to lowercase for consistent filtering
+  const rawLabel = url.searchParams.get('label')?.trim()
+  const label = rawLabel ? rawLabel.toLowerCase() : undefined
+  // Optional strict validation: reject unknown labels (soft reject — return empty)
+  const VALID_LABELS = ['code', 'newsletter', 'notification', 'personal']
+  if (label && !VALID_LABELS.includes(label)) {
+    return Response.json(
+      { error: `Invalid label. Must be one of: ${VALID_LABELS.join(', ')}` },
+      { status: 400 }
+    )
+  }
+
+  // Validate mode: must be keyword, semantic, or hybrid
   const rawMode = url.searchParams.get('mode') ?? 'keyword'
-  const mode: 'keyword' | 'semantic' | 'hybrid' =
-    rawMode === 'semantic' || rawMode === 'hybrid' ? rawMode : 'keyword'
+  if (rawMode !== 'keyword' && rawMode !== 'semantic' && rawMode !== 'hybrid') {
+    return Response.json(
+      { error: 'mode must be "keyword", "semantic", or "hybrid"' },
+      { status: 400 }
+    )
+  }
+  const mode: 'keyword' | 'semantic' | 'hybrid' = rawMode
 
   // Semantic-only mode
   if (query && mode === 'semantic') {

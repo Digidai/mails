@@ -60,4 +60,40 @@ describe('extractCode', () => {
   test('still captures numeric code after label without colon', () => {
     expect(extractCode('verification code is 987654')).toBe('987654')
   })
+
+  test('rejects 4-digit years (1900-2099) as false positive', () => {
+    // Real-world case: subject "Order Confirmation #ABC-12345" got code: "2026"
+    expect(extractCode('Order Confirmation #ABC-12345 sent on 2026-04-11')).toBeNull()
+    expect(extractCode('Receipt dated 1999')).toBeNull()
+    expect(extractCode('Thanks for joining us in 2024!')).toBeNull()
+  })
+
+  test('rejects 8-digit YYYYMMDD dates as false positive', () => {
+    // Real-world case: "QA LANG JA 20260411" got code: "20260411"
+    expect(extractCode('QA LANG JA 20260411')).toBeNull()
+    expect(extractCode('Date: 19991231')).toBeNull()
+    expect(extractCode('reference 20260101 please')).toBeNull()
+  })
+
+  test('still extracts 5-7 digit codes that happen to fall in year range', () => {
+    // 12345, 123456 etc are not years, should still be extracted
+    expect(extractCode('code is 12345')).toBe('12345')
+    expect(extractCode('code is 123456')).toBe('123456')
+  })
+
+  test('extracts Chinese code with 是： (dual delimiter)', () => {
+    // Real-world case: "您的验证码是：654321" was returning null
+    expect(extractCode('您好，您的验证码是：654321。请勿泄露。')).toBe('654321')
+    expect(extractCode('您的验证码是 654321')).toBe('654321')
+    expect(extractCode('您的验证码为：987654')).toBe('987654')
+  })
+
+  test('extracts Japanese code with です suffix', () => {
+    expect(extractCode('認証コードは 456789 です')).toBe('456789')
+  })
+
+  test('rejects year/date even when after code keyword', () => {
+    // "Your code is 2026" should still reject 2026 as year
+    expect(extractCode('Subject mentions code 2026 year')).toBeNull()
+  })
 })

@@ -94,15 +94,20 @@ export function extractStructuredData(
 function extractOrder(text: string, fromName: string, fromAddress: string): OrderExtraction {
   // Match "order #ABC-123" or "order number ABC-123" — require # or explicit keyword before the ID
   const orderIdMatch = text.match(/(?:order|confirmation)\s*(?:#|number|id|no\.)\s*:?\s*([A-Z0-9][\w-]{3,19})/i)
-  const totalMatch = text.match(/(?:total|amount|charged|grand\s*total)[:\s]*(?:\$|€|£|¥)?\s*([\d,]+\.\d{2})/i)
+  // Total: support "total: $99.99", "total is $99.99", "amount: 99.99", "grand total $99.99"
+  const totalMatch = text.match(/(?:total|amount|charged|grand\s*total)\s*(?:is|:)?\s*(?:\$|€|£|¥)?\s*([\d,]+\.\d{2})/i)
   const currencyMatch = text.match(/(?:USD|EUR|GBP|JPY|CNY|CAD|AUD|\$|€|£|¥)/i)
+
+  // Only return merchant if we actually found order-related content
+  // (prevents "senderlocalpart" being returned as merchant for non-order emails)
+  const hasOrderContent = orderIdMatch || totalMatch
 
   return {
     type: 'order',
     order_id: orderIdMatch?.[1] ?? null,
     total: totalMatch?.[1]?.replace(/,/g, '') ?? null,
-    currency: normalizeCurrency(currencyMatch?.[0] ?? null),
-    merchant: fromName?.trim() || fromAddress.split('@')[0] || null,
+    currency: hasOrderContent ? normalizeCurrency(currencyMatch?.[0] ?? null) : null,
+    merchant: hasOrderContent ? (fromName?.trim() || fromAddress.split('@')[0] || null) : null,
     items: [],
   }
 }
@@ -246,11 +251,15 @@ function extractReceipt(text: string, subject: string, fromName: string, fromAdd
   const dateMatch = text.match(/(?:date|on|dated)[:\s]+(\w+\s+\d{1,2},?\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{2,4})/i)
   const paymentMatch = text.match(/(?:paid\s+(?:with|via|by)|payment\s+method|card\s+ending)[:\s]+(.+?)(?:\n|$)/i)
 
+  // Only populate merchant if we found some receipt-like content.
+  // Otherwise return null to avoid misleading "merchant: senderlocalpart" output.
+  const hasReceiptContent = amountMatch || dateMatch || paymentMatch
+
   return {
     type: 'receipt',
-    merchant: fromName?.trim() || fromAddress.split('@')[0] || null,
+    merchant: hasReceiptContent ? (fromName?.trim() || fromAddress.split('@')[0] || null) : null,
     amount: amountMatch?.[1]?.replace(/,/g, '') ?? amountMatch?.[2]?.replace(/,/g, '') ?? null,
-    currency: normalizeCurrency(currencyMatch?.[0] ?? null),
+    currency: hasReceiptContent ? normalizeCurrency(currencyMatch?.[0] ?? null) : null,
     date: dateMatch?.[1]?.trim() ?? null,
     payment_method: paymentMatch?.[1]?.trim() ?? null,
   }

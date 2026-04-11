@@ -27,12 +27,37 @@ const R2_UPLOAD_THRESHOLD = 100_000 // 100KB
 const MAX_ATTACHMENT_SIZE = 100 * 1024 * 1024 // 100MB
 const R2_UPLOAD_TIMEOUT = 30_000 // 30s
 
+/**
+ * Method whitelist per route. Enforces that read-only endpoints reject
+ * write methods (e.g. POST /v1/me would previously return 200).
+ */
+const ROUTE_METHODS: Record<string, string[]> = {
+  '/api/inbox': ['GET'],
+  '/api/code': ['GET'],
+  '/api/email': ['GET', 'DELETE'],
+  '/api/send': ['POST'],
+  '/api/me': ['GET'],
+  '/api/attachment': ['GET'],
+  '/api/threads': ['GET'],
+  '/api/thread': ['GET'],
+  '/api/search': ['GET'],
+  '/api/extract': ['POST'],
+  '/api/events': ['GET'],
+  '/api/domains': ['GET', 'POST'],
+  '/api/stats': ['GET'],
+  '/api/claim/auto': ['POST'],
+  '/api/mailbox': ['GET', 'PATCH', 'DELETE'],
+  '/api/mailbox/pause': ['PATCH'],
+  '/api/mailbox/resume': ['PATCH'],
+  '/api/mailbox/routes': ['GET', 'PUT', 'DELETE'],
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url)
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     }
 
@@ -68,9 +93,20 @@ export default {
         // When mailbox is known from token, use it; otherwise fall through to ?to= param
         const mailbox = auth.mailbox ?? undefined
 
+        // Method enforcement: reject write methods on read-only routes and vice versa.
+        // Subpath routes (/api/domains/:id) are handled separately in the default case.
+        const routeBase = route.startsWith('/api/domains/') ? null : route
+        const allowedMethods = routeBase ? ROUTE_METHODS[routeBase] : null
+        const methodAllowed = !allowedMethods || allowedMethods.includes(request.method)
+
         // /v1/* always requires mailbox binding (except /v1/me and /v1/claim/auto)
         if (isV1 && !mailbox && route !== '/api/me' && route !== '/api/claim/auto') {
           response = Response.json({ error: 'Unauthorized' }, { status: 401 })
+        } else if (!methodAllowed) {
+          response = Response.json(
+            { error: `Method ${request.method} not allowed for ${url.pathname}. Allowed: ${allowedMethods!.join(', ')}` },
+            { status: 405, headers: { 'Allow': allowedMethods!.join(', ') } }
+          )
         } else if (paused) {
           response = Response.json({ error: 'Mailbox is paused' }, { status: 403 })
         } else {

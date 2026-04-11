@@ -49,12 +49,13 @@ CREATE INDEX IF NOT EXISTS idx_attachments_email_id ON attachments(email_id);
 CREATE INDEX IF NOT EXISTS idx_attachments_filename ON attachments(filename);
 
 -- FTS5 full-text search index (D1 supports FTS5)
--- tokenize='unicode61 remove_diacritics 2' handles case folding automatically
+-- Uses trigram tokenizer for CJK (Chinese/Japanese/Korean) support.
+-- unicode61 splits on word boundaries and fails on CJK where there are no spaces.
 CREATE VIRTUAL TABLE IF NOT EXISTS emails_fts USING fts5(
   subject, from_name, from_address, body_text, code,
   content='emails',
   content_rowid='rowid',
-  tokenize='unicode61 remove_diacritics 2'
+  tokenize='trigram case_sensitive 0'
 );
 
 -- Auto-sync FTS index on email insert

@@ -8,7 +8,7 @@ export async function handleSend(request: Request, env: Env, mailbox?: string, c
     )
   }
 
-  let body: {
+  type SendBody = {
     from: string
     to: string[]
     cc?: string[]
@@ -27,13 +27,74 @@ export async function handleSend(request: Request, env: Env, mailbox?: string, c
     return Response.json({ error: 'Content-Type must be application/json' }, { status: 415 })
   }
 
+  let raw: Record<string, unknown>
   try {
-    body = await request.json()
+    raw = await request.json() as Record<string, unknown>
   } catch {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  if (!body.from || !body.to?.length || !body.subject) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return Response.json({ error: 'Request body must be a JSON object' }, { status: 400 })
+  }
+
+  // Normalize and validate field types explicitly
+  if (typeof raw.from !== 'string' || !raw.from.trim()) {
+    return Response.json({ error: 'Field "from" must be a non-empty string' }, { status: 400 })
+  }
+  if (typeof raw.subject !== 'string') {
+    return Response.json({ error: 'Field "subject" must be a string' }, { status: 400 })
+  }
+
+  // Accept `to` as string (single recipient) or array of strings.
+  // This fixes the P0 bug where `to: "user@example.com"` returned 500.
+  let toArray: string[]
+  if (typeof raw.to === 'string') {
+    toArray = [raw.to]
+  } else if (Array.isArray(raw.to)) {
+    if (!raw.to.every(r => typeof r === 'string')) {
+      return Response.json({ error: 'Field "to" must be a string or array of strings' }, { status: 400 })
+    }
+    toArray = raw.to as string[]
+  } else {
+    return Response.json({ error: 'Field "to" is required (string or array of strings)' }, { status: 400 })
+  }
+
+  // Same for cc/bcc — accept string or array
+  const normalizeList = (val: unknown): string[] | undefined => {
+    if (val === undefined || val === null) return undefined
+    if (typeof val === 'string') return [val]
+    if (Array.isArray(val) && val.every(v => typeof v === 'string')) return val as string[]
+    return null as unknown as string[] // invalid marker
+  }
+  const ccArray = normalizeList(raw.cc)
+  const bccArray = normalizeList(raw.bcc)
+  if (raw.cc !== undefined && ccArray === null as unknown) {
+    return Response.json({ error: 'Field "cc" must be a string or array of strings' }, { status: 400 })
+  }
+  if (raw.bcc !== undefined && bccArray === null as unknown) {
+    return Response.json({ error: 'Field "bcc" must be a string or array of strings' }, { status: 400 })
+  }
+
+  const body: SendBody = {
+    from: raw.from,
+    to: toArray,
+    cc: ccArray,
+    bcc: bccArray,
+    subject: raw.subject,
+    text: typeof raw.text === 'string' ? raw.text : undefined,
+    html: typeof raw.html === 'string' ? raw.html : undefined,
+    reply_to: typeof raw.reply_to === 'string' ? raw.reply_to : undefined,
+    in_reply_to: typeof raw.in_reply_to === 'string' ? raw.in_reply_to : undefined,
+    headers: (raw.headers && typeof raw.headers === 'object' && !Array.isArray(raw.headers))
+      ? raw.headers as Record<string, string>
+      : undefined,
+    attachments: Array.isArray(raw.attachments)
+      ? raw.attachments as SendBody['attachments']
+      : undefined,
+  }
+
+  if (!body.from || !body.to.length || !body.subject) {
     return Response.json({ error: 'Missing required fields: from, to, subject' }, { status: 400 })
   }
 
@@ -51,6 +112,25 @@ export async function handleSend(request: Request, env: Env, mailbox?: string, c
 
   if ((body.text?.length ?? 0) > 500_000 || (body.html?.length ?? 0) > 1_000_000) {
     return Response.json({ error: 'Body too large' }, { status: 400 })
+  }
+
+  // Validate attachment base64 encoding
+  if (body.attachments && body.attachments.length > 0) {
+    for (const att of body.attachments) {
+      if (typeof att.filename !== 'string' || !att.filename) {
+        return Response.json({ error: 'Attachment "filename" must be a non-empty string' }, { status: 400 })
+      }
+      if (typeof att.content !== 'string') {
+        return Response.json({ error: 'Attachment "content" must be a base64 string' }, { status: 400 })
+      }
+      // Validate base64 format: chars a-z A-Z 0-9 + / with optional = padding
+      if (!/^[A-Za-z0-9+/]*={0,2}$/.test(att.content) || att.content.length % 4 !== 0) {
+        return Response.json(
+          { error: `Attachment "${att.filename}" has invalid base64 content` },
+          { status: 400 }
+        )
+      }
+    }
   }
 
   // Validate from address matches mailbox (if mailbox isolation is active)
