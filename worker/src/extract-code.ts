@@ -1,5 +1,5 @@
 /**
- * Extract verification codes (4-8 digit/alphanumeric) from text.
+ * Extract verification codes (4-12 digit/alphanumeric) from text.
  * Covers common formats across English, Chinese, Japanese, Korean.
  *
  * Design principles (learned from QA):
@@ -28,13 +28,13 @@ export function extractCode(text: string): string | null {
 
   const keywordPatterns = [
     // 1. "code is 123456" / "code: 123456" — numeric preferred (bare "code" keyword)
-    new RegExp(`\\bcode${DELIM}(\\d{4,8})\\b`, 'i'),
+    new RegExp(`\\bcode${DELIM}(\\d{4,12})\\b`, 'i'),
     // 2. Full keyword + mandatory delimiter + digits
-    new RegExp(`(?:${ALL_KW})${DELIM}(\\d{4,8})\\b`, 'i'),
+    new RegExp(`(?:${ALL_KW})${DELIM}(\\d{4,12})\\b`, 'i'),
     // 3. Bare "code" + delimiter + alphanumeric
-    new RegExp(`\\bcode${DELIM}([A-Za-z0-9]{4,8})\\b`, 'i'),
+    new RegExp(`\\bcode${DELIM}([A-Za-z0-9]{4,12})\\b`, 'i'),
     // 4. Full keyword + delimiter + alphanumeric
-    new RegExp(`(?:${ALL_KW})${DELIM}([A-Za-z0-9]{4,8})\\b`, 'i'),
+    new RegExp(`(?:${ALL_KW})${DELIM}([A-Za-z0-9]{4,12})\\b`, 'i'),
   ]
 
   for (const pattern of keywordPatterns) {
@@ -43,7 +43,7 @@ export function extractCode(text: string): string | null {
   }
 
   // Fallback: standalone digit sequence, but reject year/date patterns
-  const standaloneMatch = text.match(/(?:^|\s)(\d{4,8})(?:\s|$|\.|,)/m)
+  const standaloneMatch = text.match(/(?:^|\s)(\d{4,12})(?:\s|$|\.|,)/m)
   if (standaloneMatch?.[1] && !looksLikeDate(standaloneMatch[1])) {
     return standaloneMatch[1]
   }

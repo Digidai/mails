@@ -28,7 +28,9 @@ export async function codeCommand(args: string[]) {
   }
 
   const timeout = opts.timeout ? parseInt(opts.timeout) : 30
-  const since = opts.since ?? new Date().toISOString()
+  // Default: look back 60 seconds to catch codes that arrived just before CLI started
+  // (e.g., user submits signup form, then runs `mails code` a few seconds later)
+  const since = opts.since ?? new Date(Date.now() - 60_000).toISOString()
 
   console.error(`Waiting for verification code to ${mailbox} (timeout: ${timeout}s)...`)
 
