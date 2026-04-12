@@ -110,29 +110,9 @@ async function handleKeywordSearch(
   }
 
   if (query) {
-    const ftsQuery = '"' + query.replace(/"/g, '""') + '"'
-    const likeQuery = query.replace(/%/g, '\\%').replace(/_/g, '\\_')
-    // FTS5 trigram tokenizer requires queries of at least 3 characters.
-    // For shorter queries (common in CJK where 2-char words are frequent),
-    // fall back to LIKE on subject and body_text so they still match.
-    const useShortFallback = [...query].length < 3
-    if (useShortFallback) {
-      sql += ` AND (
-        from_address LIKE ? ESCAPE '\\'
-        OR to_address LIKE ? ESCAPE '\\'
-        OR subject LIKE ? ESCAPE '\\'
-        OR body_text LIKE ? ESCAPE '\\'
-      )`
-      const like = `%${likeQuery}%`
-      params.push(like, like, like, like)
-    } else {
-      sql += ` AND (
-        rowid IN (SELECT rowid FROM emails_fts WHERE emails_fts MATCH ?)
-        OR from_address LIKE ? ESCAPE '\\'
-        OR to_address LIKE ? ESCAPE '\\'
-      )`
-      params.push(ftsQuery, `%${likeQuery}%`, `%${likeQuery}%`)
-    }
+    const { clause, clauseParams } = buildFtsWhereClause(query)
+    sql += clause
+    params.push(...clauseParams)
   }
 
   sql += ' ORDER BY received_at DESC LIMIT ? OFFSET ?'
@@ -227,6 +207,44 @@ async function handleHybridSearch(
 }
 
 // ---------------------------------------------------------------------------
+// Shared FTS query builder (used by keyword + hybrid search)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the WHERE clause fragment for full-text search.
+ * FTS5 trigram tokenizer requires queries of at least 3 characters.
+ * For shorter queries (common in CJK where 2-char words are frequent),
+ * fall back to LIKE on subject and body_text so they still match.
+ */
+function buildFtsWhereClause(query: string): { clause: string; clauseParams: (string | number)[] } {
+  const ftsQuery = '"' + query.replace(/"/g, '""') + '"'
+  const likeQuery = query.replace(/%/g, '\\%').replace(/_/g, '\\_')
+  const useShortFallback = [...query].length < 3
+
+  if (useShortFallback) {
+    const like = `%${likeQuery}%`
+    return {
+      clause: ` AND (
+        from_address LIKE ? ESCAPE '\\\\'
+        OR to_address LIKE ? ESCAPE '\\\\'
+        OR subject LIKE ? ESCAPE '\\\\'
+        OR body_text LIKE ? ESCAPE '\\\\'
+      )`,
+      clauseParams: [like, like, like, like],
+    }
+  }
+
+  return {
+    clause: ` AND (
+      rowid IN (SELECT rowid FROM emails_fts WHERE emails_fts MATCH ?)
+      OR from_address LIKE ? ESCAPE '\\\\'
+      OR to_address LIKE ? ESCAPE '\\\\'
+    )`,
+    clauseParams: [ftsQuery, `%${likeQuery}%`, `%${likeQuery}%`],
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -247,14 +265,9 @@ async function fetchFtsResults(
     params.push(label)
   }
 
-  const ftsQuery = '"' + query.replace(/"/g, '""') + '"'
-  const likeQuery = query.replace(/%/g, '\\%').replace(/_/g, '\\_')
-  sql += ` AND (
-    rowid IN (SELECT rowid FROM emails_fts WHERE emails_fts MATCH ?)
-    OR from_address LIKE ? ESCAPE '\\'
-    OR to_address LIKE ? ESCAPE '\\'
-  )`
-  params.push(ftsQuery, `%${likeQuery}%`, `%${likeQuery}%`)
+  const { clause, clauseParams } = buildFtsWhereClause(query)
+  sql += clause
+  params.push(...clauseParams)
   sql += ' ORDER BY received_at DESC LIMIT ?'
   params.push(limit)
 

@@ -174,10 +174,11 @@ CREATE TABLE IF NOT EXISTS webhook_routes (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_webhook_routes_unique ON webhook_routes(mailbox, label);
 CREATE INDEX IF NOT EXISTS idx_webhook_routes_mailbox ON webhook_routes(mailbox);
 
--- Custom domains table
+-- Custom domains table (mailbox-scoped for tenant isolation)
 CREATE TABLE IF NOT EXISTS domains (
   id TEXT PRIMARY KEY,
   domain TEXT NOT NULL UNIQUE,
+  mailbox TEXT,
   status TEXT NOT NULL DEFAULT 'pending',
   mx_verified INTEGER NOT NULL DEFAULT 0,
   spf_verified INTEGER NOT NULL DEFAULT 0,
@@ -185,3 +186,4 @@ CREATE TABLE IF NOT EXISTS domains (
   created_at TEXT NOT NULL,
   verified_at TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_domains_mailbox ON domains(mailbox);

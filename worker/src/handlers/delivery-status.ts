@@ -127,9 +127,10 @@ export async function handleResendWebhook(
     const now = new Date().toISOString()
     for (const recipient of recipients) {
       try {
+        // Normalize to lowercase for consistent suppression matching
         await env.DB.prepare(
           'INSERT OR IGNORE INTO suppression_list (email, reason, created_at) VALUES (?, ?, ?)'
-        ).bind(recipient, reason, now).run()
+        ).bind(recipient.toLowerCase(), reason, now).run()
       } catch {
         // suppression_list table may not exist — skip
       }

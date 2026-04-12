@@ -60,19 +60,19 @@ export async function handleSend(request: Request, env: Env, mailbox?: string, c
     return Response.json({ error: 'Field "to" is required (string or array of strings)' }, { status: 400 })
   }
 
-  // Same for cc/bcc — accept string or array
-  const normalizeList = (val: unknown): string[] | undefined => {
+  // Same for cc/bcc — accept string or array. Returns false for invalid input.
+  const normalizeList = (val: unknown): string[] | undefined | false => {
     if (val === undefined || val === null) return undefined
     if (typeof val === 'string') return [val]
     if (Array.isArray(val) && val.every(v => typeof v === 'string')) return val as string[]
-    return null as unknown as string[] // invalid marker
+    return false
   }
   const ccArray = normalizeList(raw.cc)
   const bccArray = normalizeList(raw.bcc)
-  if (raw.cc !== undefined && ccArray === null as unknown) {
+  if (ccArray === false) {
     return Response.json({ error: 'Field "cc" must be a string or array of strings' }, { status: 400 })
   }
-  if (raw.bcc !== undefined && bccArray === null as unknown) {
+  if (bccArray === false) {
     return Response.json({ error: 'Field "bcc" must be a string or array of strings' }, { status: 400 })
   }
 
@@ -145,7 +145,8 @@ export async function handleSend(request: Request, env: Env, mailbox?: string, c
   }
 
   // Check suppression list for all recipients (fail-closed: reject if check fails)
-  const allRecipients = [...body.to, ...(body.cc ?? []), ...(body.bcc ?? [])]
+  // Normalize to lowercase: suppression_list stores lowercase, but senders may use mixed case
+  const allRecipients = [...body.to, ...(body.cc ?? []), ...(body.bcc ?? [])].map(e => e.toLowerCase())
   try {
     const suppressedCheck = await checkSuppressionList(env, allRecipients)
     if (suppressedCheck) {
@@ -368,20 +369,36 @@ export async function checkSuppressionList(
 }
 
 /**
- * Check daily send rate limit for a mailbox.
+ * Check daily send rate limit for a mailbox using atomic increment-then-verify.
+ * Increments the counter first (atomic), then checks the new count against the limit.
+ * If over limit, decrements back and rejects. This prevents race conditions where
+ * concurrent requests both pass a check-then-increment pattern.
  * Returns an error message if over limit, or null if OK.
  */
 async function checkDailySendLimit(env: Env, mailbox: string): Promise<string | null> {
   try {
     const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+    const dailyLimit = env.DAILY_SEND_LIMIT ? parseInt(env.DAILY_SEND_LIMIT as string, 10) : 100
+
+    // Atomic increment
+    await env.DB.prepare(
+      `INSERT INTO daily_send_counts (mailbox, date, count) VALUES (?, ?, 1)
+       ON CONFLICT (mailbox, date) DO UPDATE SET count = count + 1`
+    ).bind(mailbox, today).run()
+
+    // Read new count
     const row = await env.DB.prepare(
       'SELECT count FROM daily_send_counts WHERE mailbox = ? AND date = ?'
     ).bind(mailbox, today).first<{ count: number }>()
 
-    const dailyLimit = env.DAILY_SEND_LIMIT ? parseInt(env.DAILY_SEND_LIMIT as string, 10) : 100
-    if (row && row.count >= dailyLimit) {
-      return `Daily send limit reached (${row.count}/${dailyLimit})`
+    if (row && row.count > dailyLimit) {
+      // Over limit: decrement back and reject
+      await env.DB.prepare(
+        'UPDATE daily_send_counts SET count = count - 1 WHERE mailbox = ? AND date = ?'
+      ).bind(mailbox, today).run()
+      return `Daily send limit reached (${row.count - 1}/${dailyLimit})`
     }
+    // Under limit: increment already applied, no further action needed
   } catch (err) {
     // Fail-open: rate limit check failure should not block sending
     const msg = err instanceof Error ? err.message : String(err)
@@ -392,22 +409,9 @@ async function checkDailySendLimit(env: Env, mailbox: string): Promise<string | 
   return null
 }
 
-/**
- * Increment the daily send count for a mailbox.
- */
-async function incrementDailySendCount(env: Env, mailbox: string): Promise<void> {
-  const today = new Date().toISOString().slice(0, 10)
-  try {
-    await env.DB.prepare(
-      `INSERT INTO daily_send_counts (mailbox, date, count) VALUES (?, ?, 1)
-       ON CONFLICT (mailbox, date) DO UPDATE SET count = count + 1`
-    ).bind(mailbox, today).run()
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    if (!msg.includes('no such table')) {
-      console.warn('Failed to increment daily send count:', err)
-    }
-  }
+/** @deprecated Rate limit counting is now handled inside checkDailySendLimit atomically. */
+async function incrementDailySendCount(env: Env, _mailbox: string): Promise<void> {
+  // No-op: counting is now part of checkDailySendLimit's atomic increment-then-verify
 }
 
 export function parseFromName(from: string): string {

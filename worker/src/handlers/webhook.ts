@@ -107,13 +107,22 @@ async function fireToUrl(
       const res = useServiceBinding
         ? await env.MAILS_GTM_WORKER!.fetch(new Request(webhookUrl, { method: 'POST', headers, body }))
         : await fetch(webhookUrl, { method: 'POST', headers, body })
-      if (res.ok || res.status < 500) {
-        // Success or client error (don't retry 4xx)
+      if (res.ok) {
         console.log(`Webhook fired to ${webhookUrl} status=${res.status} event=${payload.event} attempt=${attempt + 1}`)
-        if (res.ok) {
-          // Reset failure count on success
+        // Only reset failures for the DEFAULT webhook (not label routes)
+        // This prevents a label route success from masking default webhook failures
+        const defaultUrl = await getWebhookUrl(env, mailbox)
+        if (webhookUrl === defaultUrl) {
           await resetWebhookFailures(env, mailbox).catch(() => {})
         }
+        return
+      }
+      if (res.status >= 400 && res.status < 500) {
+        // 4xx: client error. Don't retry, but DO count as a failure.
+        // Permanent 4xx errors (wrong URL, auth failure) should eventually
+        // trigger the circuit breaker rather than silently dropping data forever.
+        console.warn(`Webhook ${webhookUrl} returned ${res.status} (4xx, counting as failure)`)
+        await incrementWebhookFailures(env, mailbox)
         return
       }
       lastError = `HTTP ${res.status}`

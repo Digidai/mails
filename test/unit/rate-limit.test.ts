@@ -22,12 +22,14 @@ describe('Per-mailbox Send Rate Limits', () => {
   }
 
   test('returns 429 when daily limit is reached', async () => {
+    // After atomic increment, count = 101 (was at limit 100, +1).
+    // checkDailySendLimit sees 101 > 100, decrements back, returns 429.
     const db = {
       prepare: (sql: string) => ({
         bind: (..._args: unknown[]) => ({
           first: async () => {
             if (sql.includes('suppression_list')) return null
-            if (sql.includes('daily_send_counts')) return { count: 100 }
+            if (sql.includes('daily_send_counts')) return { count: 101 }
             return null
           },
           run: async () => ({ meta: { changes: 1 } }),
@@ -73,12 +75,13 @@ describe('Per-mailbox Send Rate Limits', () => {
   })
 
   test('respects custom DAILY_SEND_LIMIT', async () => {
+    // After atomic increment, count = 11 (was at custom limit 10, +1).
     const db = {
       prepare: (sql: string) => ({
         bind: (..._args: unknown[]) => ({
           first: async () => {
             if (sql.includes('suppression_list')) return null
-            if (sql.includes('daily_send_counts')) return { count: 10 }
+            if (sql.includes('daily_send_counts')) return { count: 11 }
             return null
           },
           run: async () => ({ meta: { changes: 1 } }),

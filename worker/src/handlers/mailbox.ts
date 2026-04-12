@@ -82,6 +82,29 @@ export async function handleMailbox(
   }
 
   if (request.method === 'DELETE') {
+    // Clean up R2 blobs before deleting D1 rows (best-effort, don't block on R2 failures)
+    let r2Deleted = 0
+    if (env.ATTACHMENTS) {
+      try {
+        // Delete raw email blobs
+        const rawKeys = await env.DB.prepare(
+          'SELECT raw_key FROM ingest_log WHERE mailbox = ? AND raw_key IS NOT NULL AND raw_key != ?'
+        ).bind(mailbox, '').all<{ raw_key: string }>()
+        for (const row of rawKeys.results ?? []) {
+          try { await env.ATTACHMENTS.delete(row.raw_key); r2Deleted++ } catch { /* best-effort */ }
+        }
+        // Delete attachment blobs
+        const attKeys = await env.DB.prepare(
+          "SELECT r2_key FROM attachments WHERE email_id IN (SELECT id FROM emails WHERE mailbox = ?) AND r2_key IS NOT NULL"
+        ).bind(mailbox).all<{ r2_key: string }>()
+        for (const row of attKeys.results ?? []) {
+          try { await env.ATTACHMENTS.delete(row.r2_key); r2Deleted++ } catch { /* best-effort */ }
+        }
+      } catch (err) {
+        console.warn('R2 cleanup during mailbox delete had errors (continuing with D1 delete):', err)
+      }
+    }
+
     try {
       await env.DB.batch([
         env.DB.prepare('DELETE FROM email_labels WHERE email_id IN (SELECT id FROM emails WHERE mailbox = ?)').bind(mailbox),
@@ -90,13 +113,14 @@ export async function handleMailbox(
         env.DB.prepare('DELETE FROM ingest_log WHERE mailbox = ?').bind(mailbox),
         env.DB.prepare('DELETE FROM daily_send_counts WHERE mailbox = ?').bind(mailbox),
         env.DB.prepare('DELETE FROM webhook_routes WHERE mailbox = ?').bind(mailbox),
+        env.DB.prepare('DELETE FROM domains WHERE mailbox = ?').bind(mailbox),
         env.DB.prepare('DELETE FROM auth_tokens WHERE mailbox = ?').bind(mailbox),
       ])
     } catch (err) {
       console.error('Failed to delete mailbox:', err)
       return Response.json({ error: 'Failed to delete mailbox' }, { status: 500 })
     }
-    return Response.json({ ok: true, deleted: mailbox })
+    return Response.json({ ok: true, deleted: mailbox, r2_blobs_deleted: r2Deleted })
   }
 
   if (request.method === 'GET') {

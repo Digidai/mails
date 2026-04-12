@@ -477,7 +477,7 @@ export default {
         for (const cleanedId of cleanedIds) {
           await env.DB.prepare('DELETE FROM ingest_log WHERE id = ?').bind(cleanedId).run()
         }
-        console.log(`Raw cleanup: deleted ${deleted} raw email blobs older than 30 days`)
+        console.log(`Raw cleanup: deleted ${cleanedIds.length} raw email blobs older than 30 days`)
       } catch (err) {
         console.error('Raw email cleanup failed:', err)
       }

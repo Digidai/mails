@@ -59,10 +59,14 @@ export async function handleDomains(
   const action = pathParts[2] || null
 
   if (request.method === 'GET' && !domainId) {
-    // List domains
-    const rows = await env.DB.prepare(
-      'SELECT * FROM domains ORDER BY created_at DESC'
-    ).all<DomainRecord>()
+    // List domains (scoped to mailbox when available)
+    const rows = mailbox
+      ? await env.DB.prepare(
+          'SELECT * FROM domains WHERE mailbox = ? OR mailbox IS NULL ORDER BY created_at DESC'
+        ).bind(mailbox).all<DomainRecord>()
+      : await env.DB.prepare(
+          'SELECT * FROM domains ORDER BY created_at DESC'
+        ).all<DomainRecord>()
 
     return Response.json({
       domains: (rows.results ?? []).map(d => ({
@@ -104,8 +108,8 @@ export async function handleDomains(
     const now = new Date().toISOString()
 
     await env.DB.prepare(
-      'INSERT INTO domains (id, domain, status, mx_verified, spf_verified, dkim_verified, created_at) VALUES (?, ?, ?, 0, 0, 0, ?)'
-    ).bind(id, domain, 'pending', now).run()
+      'INSERT INTO domains (id, domain, mailbox, status, mx_verified, spf_verified, dkim_verified, created_at) VALUES (?, ?, ?, ?, 0, 0, 0, ?)'
+    ).bind(id, domain, mailbox ?? null, 'pending', now).run()
 
     const records = getDnsRecords(domain)
 
@@ -119,10 +123,14 @@ export async function handleDomains(
   }
 
   if (request.method === 'GET' && domainId && !action) {
-    // Get single domain with DNS records
-    const row = await env.DB.prepare(
-      'SELECT * FROM domains WHERE id = ?'
-    ).bind(domainId).first<DomainRecord>()
+    // Get single domain with DNS records (scoped to mailbox)
+    const row = mailbox
+      ? await env.DB.prepare(
+          'SELECT * FROM domains WHERE id = ? AND (mailbox = ? OR mailbox IS NULL)'
+        ).bind(domainId, mailbox).first<DomainRecord>()
+      : await env.DB.prepare(
+          'SELECT * FROM domains WHERE id = ?'
+        ).bind(domainId).first<DomainRecord>()
     if (!row) {
       return Response.json({ error: 'Domain not found' }, { status: 404 })
     }
@@ -142,10 +150,14 @@ export async function handleDomains(
   }
 
   if (request.method === 'POST' && domainId && action === 'verify') {
-    // Manual verification trigger
-    const row = await env.DB.prepare(
-      'SELECT * FROM domains WHERE id = ?'
-    ).bind(domainId).first<DomainRecord>()
+    // Manual verification trigger (scoped to mailbox)
+    const row = mailbox
+      ? await env.DB.prepare(
+          'SELECT * FROM domains WHERE id = ? AND (mailbox = ? OR mailbox IS NULL)'
+        ).bind(domainId, mailbox).first<DomainRecord>()
+      : await env.DB.prepare(
+          'SELECT * FROM domains WHERE id = ?'
+        ).bind(domainId).first<DomainRecord>()
     if (!row) {
       return Response.json({ error: 'Domain not found' }, { status: 404 })
     }
@@ -190,7 +202,10 @@ export async function handleDomains(
   }
 
   if (request.method === 'DELETE' && domainId) {
-    const result = await env.DB.prepare('DELETE FROM domains WHERE id = ?').bind(domainId).run()
+    // Delete domain (scoped to mailbox)
+    const result = mailbox
+      ? await env.DB.prepare('DELETE FROM domains WHERE id = ? AND (mailbox = ? OR mailbox IS NULL)').bind(domainId, mailbox).run()
+      : await env.DB.prepare('DELETE FROM domains WHERE id = ?').bind(domainId).run()
     if (!result.meta.changes) {
       return Response.json({ error: 'Domain not found' }, { status: 404 })
     }
