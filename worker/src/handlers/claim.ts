@@ -1,4 +1,5 @@
 import type { Env, AuthContext } from '../types'
+import { recordEvent } from './events'
 
 /**
  * Reserved name blacklist — names that cannot be claimed as mailboxes.
@@ -77,6 +78,9 @@ export async function handleClaimAuto(
   await env.DB.prepare(
     'INSERT INTO auth_tokens (token, mailbox, created_at) VALUES (?, ?, ?)'
   ).bind(apiKey, mailbox, now).run()
+
+  // Activation funnel: track mailbox claim
+  await recordEvent(env, 'activation.claimed', mailbox, { name, source: 'api' })
 
   return Response.json({ mailbox, api_key: apiKey }, { status: 201 })
 }

@@ -426,6 +426,18 @@ export default {
       }
       ctx.waitUntil(recordEvent(env, 'message.received', to, eventPayload))
 
+      // Activation funnel: check if this is the first email received for this mailbox
+      ctx.waitUntil((async () => {
+        try {
+          const prior = await env.DB.prepare(
+            'SELECT id FROM emails WHERE mailbox = ? AND id != ? LIMIT 1'
+          ).bind(to, id).first()
+          if (!prior) {
+            await recordEvent(env, 'activation.first_received', to, { email_id: id, from: realFrom })
+          }
+        } catch { /* non-critical */ }
+      })())
+
       // Fire webhook with retry (non-blocking via waitUntil)
       ctx.waitUntil(fireWebhookWithRetry(env, to, eventPayload))
 

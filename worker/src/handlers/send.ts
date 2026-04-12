@@ -1,4 +1,5 @@
 import type { Env } from '../types'
+import { recordEvent } from './events'
 
 export async function handleSend(request: Request, env: Env, mailbox?: string, ctx?: ExecutionContext): Promise<Response> {
   if (!env.RESEND_API_KEY) {
@@ -292,9 +293,10 @@ export async function handleSend(request: Request, env: Env, mailbox?: string, c
   const fromEmail = extractEmail(body.from)
   const fromName = parseFromName(body.from)
 
+  console.log(`Sending email from=${fromEmail} to=${body.to.join(',')} subject="${body.subject}"`)
   console.log(`Email sent id=${id} resend_id=${resendData.id}`)
 
-  // Async: record outbound email in D1 + increment daily count
+  // Async: record outbound email in D1 + activation tracking
   const asyncWork = async () => {
     try {
       if (mailbox) {
@@ -337,6 +339,17 @@ export async function handleSend(request: Request, env: Env, mailbox?: string, c
         now,
         now,
       ).run()
+      // Activation funnel: check if this is the first email sent from this mailbox
+      if (mailbox) {
+        try {
+          const priorSent = await env.DB.prepare(
+            "SELECT id FROM emails WHERE mailbox = ? AND direction = 'outbound' AND id != ? LIMIT 1"
+          ).bind(fromEmail, id).first()
+          if (!priorSent) {
+            await recordEvent(env, 'activation.first_sent', fromEmail, { email_id: id, to: body.to })
+          }
+        } catch { /* non-critical */ }
+      }
     } catch (err) {
       console.error(`Failed to record outbound email id=${id} in D1:`, err)
     }
