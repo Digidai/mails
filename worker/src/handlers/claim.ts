@@ -29,6 +29,12 @@ export async function handleClaimAuto(
     return Response.json({ error: 'Method not allowed' }, { status: 405 })
   }
 
+  // Rate limit: max N claims per token per day (default 5)
+  const rateLimitError = await checkDailyClaimLimit(request, env)
+  if (rateLimitError) {
+    return Response.json({ error: rateLimitError }, { status: 429 })
+  }
+
   let body: { name: string }
   try {
     body = await request.json()
@@ -79,6 +85,36 @@ function generateToken(length: number): string {
   const bytes = new Uint8Array(length)
   crypto.getRandomValues(bytes)
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+async function checkDailyClaimLimit(request: Request, env: Env): Promise<string | null> {
+  try {
+    const authHeader = request.headers.get('Authorization')
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : 'unknown'
+    const today = new Date().toISOString().slice(0, 10)
+    const dailyLimit = env.DAILY_CLAIM_LIMIT ? parseInt(env.DAILY_CLAIM_LIMIT as string, 10) : 5
+
+    await env.DB.prepare(
+      `INSERT INTO daily_claim_counts (token, date, count) VALUES (?, ?, 1)
+       ON CONFLICT (token, date) DO UPDATE SET count = count + 1`
+    ).bind(token, today).run()
+
+    const row = await env.DB.prepare(
+      'SELECT count FROM daily_claim_counts WHERE token = ? AND date = ?'
+    ).bind(token, today).first<{ count: number }>()
+
+    if (row && row.count > dailyLimit) {
+      await env.DB.prepare(
+        'UPDATE daily_claim_counts SET count = count - 1 WHERE token = ? AND date = ?'
+      ).bind(token, today).run()
+      return `Daily claim limit reached (${dailyLimit} mailboxes per day)`
+    }
+
+    return null
+  } catch {
+    // Fail open: if rate limit check fails, allow the claim
+    return null
+  }
 }
 
 export { RESERVED_NAMES }

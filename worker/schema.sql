@@ -134,6 +134,14 @@ CREATE TABLE IF NOT EXISTS daily_send_counts (
   PRIMARY KEY (mailbox, date)
 );
 
+-- Per-token daily claim rate limits (anti-abuse for mailbox creation)
+CREATE TABLE IF NOT EXISTS daily_claim_counts (
+  token TEXT NOT NULL,
+  date TEXT NOT NULL,
+  count INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (token, date)
+);
+
 -- Events table for SSE streaming
 CREATE TABLE IF NOT EXISTS events (
   id TEXT PRIMARY KEY,
