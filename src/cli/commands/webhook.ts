@@ -1,7 +1,7 @@
 import { loadConfig } from '../../core/config.js'
 
 function getApiDetails(config: ReturnType<typeof loadConfig>) {
-  const apiUrl = process.env.MAILS_API_URL || config.worker_url || 'https://mails-worker.genedai.workers.dev'
+  const apiUrl = process.env.MAILS_API_URL || config.worker_url || 'https://api.mails0.com'
   const token = config.api_key || config.worker_token
   const isV1 = !!config.api_key
   return { apiUrl, token, isV1 }

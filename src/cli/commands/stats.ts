@@ -8,7 +8,7 @@ export async function statsCommand() {
     process.exit(1)
   }
 
-  const apiUrl = process.env.MAILS_API_URL || config.worker_url || 'https://mails-worker.genedai.workers.dev'
+  const apiUrl = process.env.MAILS_API_URL || config.worker_url || 'https://api.mails0.com'
   const token = config.api_key || config.worker_token
   const isV1 = !!config.api_key
   const path = isV1 ? '/v1/stats' : '/api/stats'

@@ -24,7 +24,7 @@ export async function doctorCommand() {
   // 2. API connectivity + mailbox + send capability via /v1/me
   const config = loadConfig()
   if (config.api_key) {
-    const apiUrl = process.env.MAILS_API_URL || config.worker_url || 'https://mails-worker.genedai.workers.dev'
+    const apiUrl = process.env.MAILS_API_URL || config.worker_url || 'https://api.mails0.com'
     try {
       const res = await fetch(`${apiUrl}/v1/me`, {
         headers: { 'Authorization': `Bearer ${config.api_key}` },

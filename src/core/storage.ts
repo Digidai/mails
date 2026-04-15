@@ -41,7 +41,7 @@ async function resolveRemoteProvider(config: {
 }): Promise<StorageProvider> {
   const apiUrl = process.env.MAILS_API_URL
     || config.worker_url
-    || 'https://mails-worker.genedai.workers.dev'
+    || 'https://api.mails0.com'
 
   let mailbox = config.mailbox || ''
 

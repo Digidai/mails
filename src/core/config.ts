@@ -48,7 +48,7 @@ export function setConfigValue(key: string, value: string) {
  * Saves to config if successful.
  */
 export async function resolveApiKey(apiKey: string): Promise<string | null> {
-  const apiUrl = process.env.MAILS_API_URL || 'https://mails-worker.genedai.workers.dev'
+  const apiUrl = process.env.MAILS_API_URL || 'https://api.mails0.com'
   try {
     const res = await fetch(`${apiUrl}/v1/me`, {
       headers: { 'Authorization': `Bearer ${apiKey}` },

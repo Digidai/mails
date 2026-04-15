@@ -58,7 +58,7 @@ Config:
   mails config path               Show config file path
 
 Environment:
-  MAILS_API_URL       Override API base URL (default: https://mails-worker.genedai.workers.dev)
+  MAILS_API_URL       Override API base URL (default: https://api.mails0.com)
   MAILS_CLAIM_URL     Override claim page URL (default: https://mails0.com)
 
 https://github.com/Digidai/mails

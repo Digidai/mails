@@ -1,6 +1,6 @@
 import type { SendProvider, SendResult } from '../../core/types.js'
 
-const DEFAULT_API_URL = 'https://mails-worker.genedai.workers.dev'
+const DEFAULT_API_URL = 'https://api.mails0.com'
 
 export function createHostedSendProvider(apiKey: string, apiUrl?: string): SendProvider {
   const baseUrl = apiUrl || process.env.MAILS_API_URL || DEFAULT_API_URL
