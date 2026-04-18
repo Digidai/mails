@@ -4,7 +4,7 @@ You are a regression test engineer. Your job: verify that 17+ bugs previously fi
 
 ## Credentials (set by caller via env vars)
 
-- Base URL: https://mails-worker.genedai.workers.dev
+- Base URL: https://api.mails0.com
 - API Key: $API_KEY
 - Mailbox: $MAILBOX
 - Use /v1/* paths

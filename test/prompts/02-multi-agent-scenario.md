@@ -6,7 +6,7 @@ You are AI agent "$AGENT_ROLE" participating in a multi-agent email scenario aga
 
 - Your mailbox: $MY_MAILBOX
 - Your API key: $MY_KEY
-- Base URL: https://mails-worker.genedai.workers.dev
+- Base URL: https://api.mails0.com
 
 ## Team members (do NOT use their keys)
 

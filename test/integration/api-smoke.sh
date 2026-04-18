@@ -20,7 +20,7 @@
 
 set -uo pipefail
 
-WORKER_URL="${WORKER_URL:-https://mails-worker.genedai.workers.dev}"
+WORKER_URL="${WORKER_URL:-https://api.mails0.com}"
 CLAIM_URL="${CLAIM_URL:-https://mails0.com}"
 
 PASS=0

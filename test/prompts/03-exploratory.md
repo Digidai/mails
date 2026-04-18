@@ -4,7 +4,7 @@ You are a senior QA engineer testing the mails-agent production API. Your job: f
 
 ## Credentials
 
-- Base URL: https://mails-worker.genedai.workers.dev
+- Base URL: https://api.mails0.com
 - API Key: $API_KEY
 - Mailbox: $MAILBOX
 - Use /v1/* paths (hosted mode)

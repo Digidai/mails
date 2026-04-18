@@ -10,7 +10,7 @@
  *
  * Requires .env with:
  *   RESEND_API_KEY=re_xxx              (kimeeru key, for sending TO test.mails0.com)
- *   OSS_WORKER_URL=https://mails-worker.genedai.workers.dev
+ *   OSS_WORKER_URL=https://api.mails0.com
  *   OSS_WORKER_TOKEN=oss_e2e_xxx       (AUTH_TOKEN set on the worker)
  *   OSS_MAILBOX=e2e@test.mails0.com
  *
@@ -21,7 +21,7 @@ import { createRemoteProvider } from '../../src/providers/storage/remote'
 import { createResendProvider } from '../../src/providers/send/resend'
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY
-const OSS_WORKER_URL = process.env.OSS_WORKER_URL || 'https://mails-worker.genedai.workers.dev'
+const OSS_WORKER_URL = process.env.OSS_WORKER_URL || 'https://api.mails0.com'
 const OSS_WORKER_TOKEN = process.env.OSS_WORKER_TOKEN || ''
 const OSS_MAILBOX = process.env.OSS_MAILBOX || 'e2e@test.mails0.com'
 
