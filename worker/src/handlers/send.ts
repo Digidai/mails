@@ -299,9 +299,7 @@ export async function handleSend(request: Request, env: Env, mailbox?: string, c
   // Async: record outbound email in D1 + activation tracking
   const asyncWork = async () => {
     try {
-      if (mailbox) {
-        await incrementDailySendCount(env, mailbox)
-      }
+      // Daily send count is already incremented atomically in checkDailySendLimit()
       const attachmentNames = body.attachments?.map(a => a.filename).join(', ') ?? ''
       const toAddresses = body.to.join(', ')
       const metadata: Record<string, unknown> = {
@@ -320,7 +318,7 @@ export async function handleSend(request: Request, env: Env, mailbox?: string, c
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', 'outbound', 'sent', ?, ?)
       `).bind(
         id,
-        fromEmail,
+        mailbox ?? fromEmail,
         fromEmail,
         fromName,
         toAddresses,
@@ -342,11 +340,12 @@ export async function handleSend(request: Request, env: Env, mailbox?: string, c
       // Activation funnel: check if this is the first email sent from this mailbox
       if (mailbox) {
         try {
+          const senderMailbox = mailbox ?? fromEmail
           const priorSent = await env.DB.prepare(
             "SELECT id FROM emails WHERE mailbox = ? AND direction = 'outbound' AND id != ? LIMIT 1"
-          ).bind(fromEmail, id).first()
+          ).bind(senderMailbox, id).first()
           if (!priorSent) {
-            await recordEvent(env, 'activation.first_sent', fromEmail, { email_id: id, to: body.to })
+            await recordEvent(env, 'activation.first_sent', senderMailbox, { email_id: id, to: body.to })
           }
         } catch { /* non-critical */ }
       }

@@ -92,33 +92,36 @@ function generateToken(length: number): string {
 }
 
 async function checkDailyClaimLimit(request: Request, env: Env): Promise<string | null> {
-  try {
-    const authHeader = request.headers.get('Authorization')
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : 'unknown'
-    const today = new Date().toISOString().slice(0, 10)
-    const dailyLimit = env.DAILY_CLAIM_LIMIT ? parseInt(env.DAILY_CLAIM_LIMIT as string, 10) : 5
+  const authHeader = request.headers.get('Authorization')
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : 'unknown'
+  const today = new Date().toISOString().slice(0, 10)
+  const dailyLimit = env.DAILY_CLAIM_LIMIT ? parseInt(env.DAILY_CLAIM_LIMIT as string, 10) : 5
 
+  try {
     await env.DB.prepare(
       `INSERT INTO daily_claim_counts (token, date, count) VALUES (?, ?, 1)
        ON CONFLICT (token, date) DO UPDATE SET count = count + 1`
     ).bind(token, today).run()
-
-    const row = await env.DB.prepare(
-      'SELECT count FROM daily_claim_counts WHERE token = ? AND date = ?'
-    ).bind(token, today).first<{ count: number }>()
-
-    if (row && row.count > dailyLimit) {
-      await env.DB.prepare(
-        'UPDATE daily_claim_counts SET count = count - 1 WHERE token = ? AND date = ?'
-      ).bind(token, today).run()
-      return `Daily claim limit reached (${dailyLimit} mailboxes per day)`
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (msg.includes('no such table') || msg.includes('SQLITE_ERROR')) {
+      return null
     }
-
-    return null
-  } catch {
-    // Fail open: if rate limit check fails, allow the claim
-    return null
+    return 'Rate limit check failed — try again'
   }
+
+  const row = await env.DB.prepare(
+    'SELECT count FROM daily_claim_counts WHERE token = ? AND date = ?'
+  ).bind(token, today).first<{ count: number }>()
+
+  if (row && row.count > dailyLimit) {
+    await env.DB.prepare(
+      'UPDATE daily_claim_counts SET count = count - 1 WHERE token = ? AND date = ?'
+    ).bind(token, today).run()
+    return `Daily claim limit reached (${dailyLimit} mailboxes per day)`
+  }
+
+  return null
 }
 
 export { RESERVED_NAMES }

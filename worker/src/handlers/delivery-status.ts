@@ -122,12 +122,12 @@ export async function handleResendWebhook(
 
   // Add to suppression list on bounce or complaint
   if (newStatus === 'bounced' || newStatus === 'complained') {
-    const recipients = body.data.to ?? []
+    const recipients = (Array.isArray(body.data.to) ? body.data.to : []) as unknown[]
     const reason = newStatus === 'bounced' ? 'bounce' : 'complaint'
     const now = new Date().toISOString()
     for (const recipient of recipients) {
+      if (typeof recipient !== 'string') continue
       try {
-        // Normalize to lowercase for consistent suppression matching
         await env.DB.prepare(
           'INSERT OR IGNORE INTO suppression_list (email, reason, created_at) VALUES (?, ?, ?)'
         ).bind(recipient.toLowerCase(), reason, now).run()
