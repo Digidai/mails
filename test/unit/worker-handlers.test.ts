@@ -1151,6 +1151,83 @@ describe('handleInbox', () => {
     const bindArgs = (stmt.bind as any).mock.calls[0]
     expect(bindArgs).toContain(100) // capped
   })
+
+  test('uses LIKE fallback with single-character escape for short CJK queries', async () => {
+    let preparedSql = ''
+    const stmt = mockStatement(null, [])
+    const db = mockDB((sql) => {
+      preparedSql = sql
+      return stmt
+    })
+    const env = makeEnv({ DB: db })
+    const url = new URL('https://worker.test/api/inbox?to=user@test.com&query=%E6%B5%8B%E8%AF%95')
+
+    const res = await handleInbox(url, env)
+
+    expect(res.status).toBe(200)
+    expect(preparedSql).not.toContain('emails_fts')
+    expect(preparedSql).toContain("ESCAPE '\\'")
+    expect(preparedSql).not.toContain("ESCAPE '\\\\'")
+    expect(preparedSql).toContain('subject LIKE ?')
+    expect(preparedSql).toContain('body_text LIKE ?')
+    expect((stmt.bind as any).mock.calls[0]).toContain('%测试%')
+  })
+
+  test('keeps subject/body LIKE fallback alongside FTS for longer CJK queries', async () => {
+    let preparedSql = ''
+    const stmt = mockStatement(null, [])
+    const db = mockDB((sql) => {
+      preparedSql = sql
+      return stmt
+    })
+    const env = makeEnv({ DB: db })
+    const url = new URL('https://worker.test/api/inbox?to=user@test.com&query=%E4%B8%AD%E6%96%87%E6%B5%8B')
+
+    const res = await handleInbox(url, env)
+
+    expect(res.status).toBe(200)
+    expect(preparedSql).toContain('emails_fts MATCH ?')
+    expect(preparedSql).toContain("ESCAPE '\\'")
+    expect(preparedSql).not.toContain("ESCAPE '\\\\'")
+    expect(preparedSql).toContain('subject LIKE ?')
+    expect(preparedSql).toContain('body_text LIKE ?')
+    expect((stmt.bind as any).mock.calls[0]).toContain('%中文测%')
+  })
+
+  test('falls back to LIKE when FTS query execution fails', async () => {
+    const originalWarn = console.warn
+    console.warn = mock(() => {})
+    const emailRows = [
+      { id: 'e1', mailbox: 'user@test.com', from_address: 's@test.com', from_name: 'S', subject: '中文测试', code: null, direction: 'inbound', status: 'received', received_at: '2026-01-01T00:00:00Z', has_attachments: 0, attachment_count: 0 },
+    ]
+    const prepareSqls: string[] = []
+    const failingStmt: any = {
+      bind: mock(() => failingStmt),
+      all: mock(async () => { throw new Error('no such table: emails_fts') }),
+    }
+    const fallbackStmt = mockStatement(null, emailRows)
+    const db = mockDB((sql) => {
+      prepareSqls.push(sql)
+      return prepareSqls.length === 1 ? failingStmt : fallbackStmt
+    })
+    const env = makeEnv({ DB: db })
+    const url = new URL('https://worker.test/api/inbox?to=user@test.com&query=%E4%B8%AD%E6%96%87%E6%B5%8B')
+
+    try {
+      const res = await handleInbox(url, env)
+      const data = await res.json() as { emails: any[] }
+
+      expect(res.status).toBe(200)
+      expect(data.emails).toHaveLength(1)
+      expect(data.emails[0].subject).toBe('中文测试')
+      expect(prepareSqls[0]).toContain('emails_fts')
+      expect(prepareSqls[1]).not.toContain('emails_fts')
+      expect(prepareSqls[1]).toContain('subject LIKE ?')
+      expect((fallbackStmt.bind as any).mock.calls[0]).toContain('%中文测%')
+    } finally {
+      console.warn = originalWarn
+    }
+  })
 })
 
 // ---------------------------------------------------------------------------

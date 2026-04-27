@@ -93,32 +93,10 @@ async function handleKeywordSearch(
   direction: string | null, label: string | undefined,
   limit: number, offset: number
 ): Promise<Response> {
-  let sql = `
-    SELECT id, mailbox, from_address, from_name, subject, code, direction, status,
-           received_at, has_attachments, attachment_count
-    FROM emails WHERE mailbox = ?`
-  const params: (string | number)[] = [to]
-
-  if (direction === 'inbound' || direction === 'outbound') {
-    sql += ' AND direction = ?'
-    params.push(direction)
-  }
-
-  if (label) {
-    sql += ' AND id IN (SELECT email_id FROM email_labels WHERE label = ?)'
-    params.push(label)
-  }
-
-  if (query) {
-    const { clause, clauseParams } = buildFtsWhereClause(query)
-    sql += clause
-    params.push(...clauseParams)
-  }
-
-  sql += ' ORDER BY received_at DESC LIMIT ? OFFSET ?'
-  params.push(limit, offset)
-
-  const rows = await env.DB.prepare(sql).bind(...params).all()
+  const primary = buildEmailListQuery(to, query, direction, label, limit, offset)
+  const rows = await executeEmailListQuery(env, primary, query ? () => {
+    return buildEmailListQuery(to, query, direction, label, limit, offset, true)
+  } : undefined)
 
   return Response.json({
     emails: rows.results.map(formatEmailRow),
@@ -218,35 +196,76 @@ async function handleHybridSearch(
  */
 function buildFtsWhereClause(query: string): { clause: string; clauseParams: (string | number)[] } {
   const ftsQuery = '"' + query.replace(/"/g, '""') + '"'
-  const likeQuery = query.replace(/%/g, '\\%').replace(/_/g, '\\_')
+  const like = buildLikePattern(query)
   const useShortFallback = [...query].length < 3
 
   if (useShortFallback) {
-    const like = `%${likeQuery}%`
-    return {
-      clause: ` AND (
-        from_address LIKE ? ESCAPE '\\\\'
-        OR to_address LIKE ? ESCAPE '\\\\'
-        OR subject LIKE ? ESCAPE '\\\\'
-        OR body_text LIKE ? ESCAPE '\\\\'
-      )`,
-      clauseParams: [like, like, like, like],
-    }
+    return buildLikeWhereClause(query)
   }
 
   return {
     clause: ` AND (
       rowid IN (SELECT rowid FROM emails_fts WHERE emails_fts MATCH ?)
-      OR from_address LIKE ? ESCAPE '\\\\'
-      OR to_address LIKE ? ESCAPE '\\\\'
+      OR from_address LIKE ? ESCAPE '\\'
+      OR to_address LIKE ? ESCAPE '\\'
+      OR subject LIKE ? ESCAPE '\\'
+      OR body_text LIKE ? ESCAPE '\\'
     )`,
-    clauseParams: [ftsQuery, `%${likeQuery}%`, `%${likeQuery}%`],
+    clauseParams: [ftsQuery, like, like, like, like],
+  }
+}
+
+function buildLikeWhereClause(query: string): { clause: string; clauseParams: (string | number)[] } {
+  const like = buildLikePattern(query)
+  return {
+    clause: ` AND (
+      from_address LIKE ? ESCAPE '\\'
+      OR to_address LIKE ? ESCAPE '\\'
+      OR subject LIKE ? ESCAPE '\\'
+      OR body_text LIKE ? ESCAPE '\\'
+    )`,
+    clauseParams: [like, like, like, like],
   }
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function buildLikePattern(query: string): string {
+  return `%${query.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')}%`
+}
+
+type QueryParts = {
+  sql: string
+  params: (string | number)[]
+  usesFts: boolean
+}
+
+function buildEmailListQuery(
+  to: string,
+  query: string | undefined,
+  direction: string | null,
+  label: string | undefined,
+  limit: number,
+  offset: number,
+  forceLike = false
+): QueryParts {
+  let sql = `
+    SELECT id, mailbox, from_address, from_name, subject, code, direction, status,
+           received_at, has_attachments, attachment_count
+    FROM emails WHERE mailbox = ?`
+  const params: (string | number)[] = [to]
+
+  appendEmailFilters({ direction, label, query, forceLike, params, sql }, (nextSql) => {
+    sql = nextSql
+  })
+
+  sql += ' ORDER BY received_at DESC LIMIT ? OFFSET ?'
+  params.push(limit, offset)
+
+  return { sql, params, usesFts: Boolean(query && !forceLike && [...query].length >= 3) }
+}
 
 async function fetchFtsResults(
   env: Env, to: string, query: string,
@@ -256,23 +275,79 @@ async function fetchFtsResults(
   let sql = 'SELECT id FROM emails WHERE mailbox = ?'
   const params: (string | number)[] = [to]
 
-  if (direction === 'inbound' || direction === 'outbound') {
-    sql += ' AND direction = ?'
-    params.push(direction)
-  }
-  if (label) {
-    sql += ' AND id IN (SELECT email_id FROM email_labels WHERE label = ?)'
-    params.push(label)
-  }
+  appendEmailFilters({ direction, label, query, forceLike: false, params, sql }, (nextSql) => {
+    sql = nextSql
+  })
 
-  const { clause, clauseParams } = buildFtsWhereClause(query)
-  sql += clause
-  params.push(...clauseParams)
   sql += ' ORDER BY received_at DESC LIMIT ?'
   params.push(limit)
 
-  const rows = await env.DB.prepare(sql).bind(...params).all()
+  const rows = await executeEmailListQuery(
+    env,
+    { sql, params, usesFts: [...query].length >= 3 },
+    () => {
+      let fallbackSql = 'SELECT id FROM emails WHERE mailbox = ?'
+      const fallbackParams: (string | number)[] = [to]
+      appendEmailFilters({ direction, label, query, forceLike: true, params: fallbackParams, sql: fallbackSql }, (nextSql) => {
+        fallbackSql = nextSql
+      })
+      fallbackSql += ' ORDER BY received_at DESC LIMIT ?'
+      fallbackParams.push(limit)
+      return { sql: fallbackSql, params: fallbackParams, usesFts: false }
+    }
+  )
   return rows.results ?? []
+}
+
+function appendEmailFilters(
+  input: {
+    direction: string | null
+    label: string | undefined
+    query: string | undefined
+    forceLike: boolean
+    params: (string | number)[]
+    sql: string
+  },
+  setSql: (sql: string) => void
+): void {
+  let { sql } = input
+
+  if (input.direction === 'inbound' || input.direction === 'outbound') {
+    sql += ' AND direction = ?'
+    input.params.push(input.direction)
+  }
+
+  if (input.label) {
+    sql += ' AND id IN (SELECT email_id FROM email_labels WHERE label = ?)'
+    input.params.push(input.label)
+  }
+
+  if (input.query) {
+    const { clause, clauseParams } = input.forceLike
+      ? buildLikeWhereClause(input.query)
+      : buildFtsWhereClause(input.query)
+    sql += clause
+    input.params.push(...clauseParams)
+  }
+
+  setSql(sql)
+}
+
+async function executeEmailListQuery(
+  env: Env,
+  primary: QueryParts,
+  fallback?: () => QueryParts
+): Promise<{ results: Record<string, unknown>[] }> {
+  try {
+    return await env.DB.prepare(primary.sql).bind(...primary.params).all()
+  } catch (error) {
+    if (!primary.usesFts || !fallback) {
+      throw error
+    }
+    console.warn('FTS keyword search failed; retrying with LIKE fallback', error)
+    const retry = fallback()
+    return await env.DB.prepare(retry.sql).bind(...retry.params).all()
+  }
 }
 
 async function fetchEmailsByIds(
