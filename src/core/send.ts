@@ -43,6 +43,8 @@ export async function send(options: SendOptions): Promise<SendResult> {
   }
 
   const to = Array.isArray(options.to) ? options.to : [options.to]
+  const cc = options.cc ? (Array.isArray(options.cc) ? options.cc : [options.cc]) : undefined
+  const bcc = options.bcc ? (Array.isArray(options.bcc) ? options.bcc : [options.bcc]) : undefined
 
   if (!options.text && !options.html) {
     throw new Error('Either text or html body is required')
@@ -53,10 +55,13 @@ export async function send(options: SendOptions): Promise<SendResult> {
   return provider.send({
     from,
     to,
+    cc,
+    bcc,
     subject: options.subject,
     text: options.text,
     html: options.html,
     replyTo: options.replyTo,
+    inReplyTo: options.inReplyTo,
     headers: options.headers,
     attachments,
   })

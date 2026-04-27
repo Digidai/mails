@@ -994,12 +994,12 @@ describe('resolveAuth — legacy AUTH_TOKEN mode', () => {
   })
 })
 
-describe('resolveAuth — no auth configured (public access)', () => {
+describe('resolveAuth — no auth configured', () => {
   beforeEach(() => {
     _resetAuthCache()
   })
 
-  test('returns { mailbox: null } when no auth is configured', async () => {
+  test('returns null when no auth is configured', async () => {
     // Make auth_tokens table check fail (table doesn't exist)
     const failStmt: any = {
       bind: mock((..._args: unknown[]) => failStmt),
@@ -1012,11 +1012,10 @@ describe('resolveAuth — no auth configured (public access)', () => {
     const env = makeEnv({ DB: db })
     const req = new Request('https://worker.test/api/emails')
     const result = await resolveAuth(req, env)
-    expect(result).not.toBeNull()
-    expect(result!.mailbox).toBeNull()
+    expect(result).toBeNull()
   })
 
-  test('returns { mailbox: null } even with a Bearer token when no auth configured', async () => {
+  test('returns null even with a Bearer token when no auth configured', async () => {
     const failStmt: any = {
       bind: mock((..._args: unknown[]) => failStmt),
       first: mock(async () => null),
@@ -1028,6 +1027,20 @@ describe('resolveAuth — no auth configured (public access)', () => {
     const req = new Request('https://worker.test/api/emails', {
       headers: { Authorization: 'Bearer some-token' },
     })
+    const result = await resolveAuth(req, env)
+    expect(result).toBeNull()
+  })
+
+  test('returns { mailbox: null } when public API mode is explicitly enabled', async () => {
+    const failStmt: any = {
+      bind: mock((..._args: unknown[]) => failStmt),
+      first: mock(async () => null),
+      run: mock(async () => { throw new Error('no such table: auth_tokens') }),
+      all: mock(async () => ({ results: [] })),
+    }
+    const db = mockDB(() => failStmt)
+    const env = makeEnv({ DB: db, ALLOW_PUBLIC_API: 'true' })
+    const req = new Request('https://worker.test/api/emails')
     const result = await resolveAuth(req, env)
     expect(result).not.toBeNull()
     expect(result!.mailbox).toBeNull()

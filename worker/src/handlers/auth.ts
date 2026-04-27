@@ -6,7 +6,7 @@ import type { AuthContext, Env } from '../types'
  * Auth model:
  *   - If AUTH_TOKENS is set (D1 table mode): look up token → mailbox binding
  *   - If AUTH_TOKEN is set (legacy single-token mode): any valid token, no mailbox binding
- *   - If neither: no auth required, all endpoints are public
+ *   - If neither: reject by default. Set ALLOW_PUBLIC_API=true only for local/dev
  *
  * Returns null if auth is required but token is invalid/missing.
  */
@@ -45,8 +45,13 @@ export async function resolveAuth(request: Request, env: Env, requireTokenTable 
     return { mailbox: null, scope: 'full' }
   }
 
-  // No auth configured — public access
-  return { mailbox: null, scope: 'full' }
+  // No auth configured — fail closed by default. Public API mode is an
+  // explicit local/dev escape hatch to avoid accidentally exposing a Worker.
+  if (env.ALLOW_PUBLIC_API === 'true') {
+    return { mailbox: null, scope: 'full' }
+  }
+
+  return null
 }
 
 function extractBearerToken(request: Request): string | null {

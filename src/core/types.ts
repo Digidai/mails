@@ -92,10 +92,13 @@ export interface ExtractionResult {
 export interface SendOptions {
   from?: string
   to: string | string[]
+  cc?: string | string[]
+  bcc?: string | string[]
   subject: string
   text?: string
   html?: string
   replyTo?: string
+  inReplyTo?: string
   headers?: Record<string, string>
   attachments?: SendAttachment[]
 }
@@ -104,6 +107,7 @@ export interface SendResult {
   id: string
   provider: string
   provider_id?: string
+  thread_id?: string | null
 }
 
 export interface MailsConfig {
@@ -124,10 +128,13 @@ export interface SendProvider {
   send(options: {
     from: string
     to: string[]
+    cc?: string[]
+    bcc?: string[]
     subject: string
     text?: string
     html?: string
     replyTo?: string
+    inReplyTo?: string
     headers?: Record<string, string>
     attachments?: PreparedAttachment[]
   }): Promise<SendResult>

@@ -6,6 +6,7 @@ export interface Env {
   MAILS_GTM_WORKER?: Fetcher  // Service binding to mails-gtm-agent
   AUTH_TOKEN?: string
   AUTH_TOKENS?: string
+  ALLOW_PUBLIC_API?: string
   RESEND_API_KEY?: string
   WEBHOOK_SECRET?: string
   RESEND_WEBHOOK_SECRET?: string

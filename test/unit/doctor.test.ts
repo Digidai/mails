@@ -1,4 +1,13 @@
-import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test'
+import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
+import type { MailsConfig } from '../../src/core/types'
+
+const fakeConfig: MailsConfig = {
+  mode: 'hosted',
+  domain: 'mails0.com',
+  mailbox: 'agent@mails0.com',
+  send_provider: 'resend',
+  storage_provider: 'sqlite',
+}
 
 describe('doctor command', () => {
   let output: string[]
@@ -19,28 +28,46 @@ describe('doctor command', () => {
     console.log = origLog
     console.error = origError
     process.exit = origExit
-    mock.restore()
   })
 
   test('shows config check pass when config exists', async () => {
     const { doctorCommand } = await import('../../src/cli/commands/doctor.js')
-    await doctorCommand()
+    await doctorCommand({
+      configFile: '/tmp/mails-config.json',
+      configExists: true,
+      loadConfig: () => fakeConfig,
+    })
     const text = output.join('\n')
     expect(text).toContain('Config:')
   })
 
   test('shows API check when api_key is configured', async () => {
-    // This will attempt a real API call but will show the attempt
     const { doctorCommand } = await import('../../src/cli/commands/doctor.js')
-    await doctorCommand()
+    await doctorCommand({
+      configFile: '/tmp/mails-config.json',
+      configExists: true,
+      loadConfig: () => ({ ...fakeConfig, api_key: 'mk_test_key' }),
+      apiUrl: 'https://api.test',
+      fetch: async () => new Response(JSON.stringify({
+        mailbox: 'agent@mails0.com',
+        send: true,
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    })
     const text = output.join('\n')
-    // Should contain either API pass or fail
-    expect(text).toMatch(/API:|api_key/)
+    expect(text).toContain('API:')
+    expect(text).toContain('connected')
   })
 
   test('shows mails doctor header', async () => {
     const { doctorCommand } = await import('../../src/cli/commands/doctor.js')
-    await doctorCommand()
+    await doctorCommand({
+      configFile: '/tmp/mails-config.json',
+      configExists: false,
+      loadConfig: () => fakeConfig,
+    })
     const text = output.join('\n')
     expect(text).toContain('mails doctor')
   })

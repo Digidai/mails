@@ -14,9 +14,12 @@ export function createHostedSendProvider(apiKey: string, apiUrl?: string): SendP
         to: options.to,
         subject: options.subject,
       }
+      if (options.cc?.length) body.cc = options.cc
+      if (options.bcc?.length) body.bcc = options.bcc
       if (options.text) body.text = options.text
       if (options.html) body.html = options.html
       if (options.replyTo) body.reply_to = options.replyTo
+      if (options.inReplyTo) body.in_reply_to = options.inReplyTo
       if (options.headers && Object.keys(options.headers).length > 0) {
         body.headers = options.headers
       }
@@ -50,6 +53,8 @@ export function createHostedSendProvider(apiKey: string, apiUrl?: string): SendP
         from?: string
         sends_this_month?: number
         monthly_limit?: number
+        provider_id?: string
+        thread_id?: string | null
         error?: string
         price?: string
       }
@@ -68,7 +73,7 @@ export function createHostedSendProvider(apiKey: string, apiUrl?: string): SendP
         process.stderr.write(`  [${data.sends_this_month}/${data.monthly_limit} this month]\n`)
       }
 
-      return { id: data.id!, provider: 'mails0.com', provider_id: data.id }
+      return { id: data.id!, provider: 'mails0.com', provider_id: data.provider_id ?? data.id, thread_id: data.thread_id }
     },
   }
 }

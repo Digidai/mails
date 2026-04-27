@@ -97,6 +97,44 @@ describe('CLI: send command', () => {
       },
     ])
   })
+
+  test('send command parses cc, bcc, and in-reply-to flags', async () => {
+    const { setConfigValue } = await freshConfig()
+    setConfigValue('resend_api_key', 're_test')
+    setConfigValue('default_from', 'Bot <bot@test.com>')
+
+    let sentBody: Record<string, unknown> = {}
+    globalThis.fetch = mock(async (_url: string, init: RequestInit) => {
+      sentBody = JSON.parse(init.body as string)
+      return new Response(JSON.stringify({ id: 'msg_cli_cc' }))
+    }) as typeof fetch
+
+    cfgCounter++
+    const { sendCommand } = await import(`../../src/cli/commands/send.ts?t=cli_scmd_cc_${cfgCounter}`)
+    const originalLog = console.log
+    console.log = () => {}
+
+    try {
+      await sendCommand([
+        '--to', 'user@example.com',
+        '--cc', 'cc1@example.com',
+        '--cc', 'cc2@example.com',
+        '--bcc', 'audit@example.com',
+        '--subject', 'CLI CC',
+        '--body', 'Hello',
+        '--in-reply-to', '<original@example.com>',
+      ])
+    } finally {
+      console.log = originalLog
+    }
+
+    expect(sentBody.cc).toEqual(['cc1@example.com', 'cc2@example.com'])
+    expect(sentBody.bcc).toEqual(['audit@example.com'])
+    expect(sentBody.headers).toEqual({
+      'In-Reply-To': '<original@example.com>',
+      'References': '<original@example.com>',
+    })
+  })
 })
 
 describe('CLI: config command', () => {

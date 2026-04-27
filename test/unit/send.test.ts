@@ -115,6 +115,31 @@ describe('send', () => {
     expect(sentTo).toEqual(['a@test.com', 'b@test.com'])
   })
 
+  test('passes cc, bcc, and inReplyTo through provider', async () => {
+    let sentBody: Record<string, unknown> = {}
+    globalThis.fetch = mock(async (_url: string, init: RequestInit) => {
+      sentBody = JSON.parse(init.body as string)
+      return new Response(JSON.stringify({ id: 'msg_threaded' }))
+    }) as typeof fetch
+
+    const { send } = await freshSend()
+    await send({
+      to: 'user@example.com',
+      cc: ['cc1@example.com', 'cc2@example.com'],
+      bcc: 'audit@example.com',
+      subject: 'Threaded',
+      text: 'hi',
+      inReplyTo: '<original@example.com>',
+    })
+
+    expect(sentBody.cc).toEqual(['cc1@example.com', 'cc2@example.com'])
+    expect(sentBody.bcc).toEqual(['audit@example.com'])
+    expect(sentBody.headers).toEqual({
+      'In-Reply-To': '<original@example.com>',
+      'References': '<original@example.com>',
+    })
+  })
+
   test('throws when no provider configured', async () => {
     const { saveConfig } = await freshConfig()
     saveConfig({ ...BASE_CONFIG, send_provider: 'unknown', resend_api_key: undefined, api_key: undefined })

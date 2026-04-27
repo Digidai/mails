@@ -80,6 +80,31 @@ describe('Worker send provider', () => {
     expect(capturedBody.text).toBeUndefined()
   })
 
+  test('includes cc, bcc, in_reply_to and returns thread_id', async () => {
+    let capturedBody: Record<string, unknown> = {}
+
+    globalThis.fetch = mock(async (_url: string, init: RequestInit) => {
+      capturedBody = JSON.parse(init.body as string)
+      return new Response(JSON.stringify({ id: 'msg-thread', provider_id: 'resend-thread', thread_id: 'thread-1' }))
+    }) as typeof fetch
+
+    const provider = createWorkerSendProvider('https://worker.example.com', 'tok')
+    const result = await provider.send({
+      from: 'a@b.com',
+      to: ['c@d.com'],
+      cc: ['cc@d.com'],
+      bcc: ['bcc@d.com'],
+      subject: 'Test',
+      text: 'Body',
+      inReplyTo: '<original@example.com>',
+    })
+
+    expect(capturedBody.cc).toEqual(['cc@d.com'])
+    expect(capturedBody.bcc).toEqual(['bcc@d.com'])
+    expect(capturedBody.in_reply_to).toBe('<original@example.com>')
+    expect(result.thread_id).toBe('thread-1')
+  })
+
   test('includes attachments when provided', async () => {
     let capturedBody: Record<string, unknown> = {}
 

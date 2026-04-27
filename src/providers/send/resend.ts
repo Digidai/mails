@@ -20,11 +20,20 @@ export function createResendProvider(apiKey: string): SendProvider {
         to: options.to,
         subject: options.subject,
       }
+      if (options.cc?.length) body.cc = options.cc
+      if (options.bcc?.length) body.bcc = options.bcc
       if (options.text) body.text = options.text
       if (options.html) body.html = options.html
       if (options.replyTo) body.reply_to = options.replyTo
+      if (options.inReplyTo) {
+        body.headers = {
+          ...(options.headers ?? {}),
+          'In-Reply-To': options.inReplyTo,
+          'References': options.inReplyTo,
+        }
+      }
       if (options.headers && Object.keys(options.headers).length > 0) {
-        body.headers = options.headers
+        body.headers = body.headers ?? options.headers
       }
       if (options.attachments?.length) {
         body.attachments = options.attachments.map((attachment) => ({

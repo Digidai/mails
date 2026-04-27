@@ -66,6 +66,37 @@ describe('Hosted send provider', () => {
     await provider.send({ from: 'a@b.dev', to: ['c@d.com'], subject: 'R', text: 'x', replyTo: 'reply@test.com' })
   })
 
+  test('sends with cc, bcc, in_reply_to and returns thread_id', async () => {
+    let capturedBody: Record<string, unknown> = {}
+    globalThis.fetch = mock(async (_url: string, init: RequestInit) => {
+      capturedBody = JSON.parse(init.body as string)
+      return new Response(JSON.stringify({
+        id: 'hosted_thread',
+        provider_id: 'resend_thread',
+        thread_id: 'thread-hosted',
+        sends_this_month: 1,
+        monthly_limit: 100,
+      }))
+    }) as typeof fetch
+
+    const provider = createHostedSendProvider('mk_key')
+    const result = await provider.send({
+      from: 'a@b.dev',
+      to: ['c@d.com'],
+      cc: ['cc@d.com'],
+      bcc: ['bcc@d.com'],
+      subject: 'R',
+      text: 'x',
+      inReplyTo: '<original@example.com>',
+    })
+
+    expect(capturedBody.cc).toEqual(['cc@d.com'])
+    expect(capturedBody.bcc).toEqual(['bcc@d.com'])
+    expect(capturedBody.in_reply_to).toBe('<original@example.com>')
+    expect(result.provider_id).toBe('resend_thread')
+    expect(result.thread_id).toBe('thread-hosted')
+  })
+
   test('sends with attachments', async () => {
     globalThis.fetch = mock(async (_url: string, init: RequestInit) => {
       const body = JSON.parse(init.body as string)

@@ -1,33 +1,50 @@
 import { loadConfig, CONFIG_FILE } from '../../core/config.js'
 import { existsSync } from 'node:fs'
+import type { MailsConfig } from '../../core/types.js'
 
-export async function doctorCommand() {
+interface DoctorOptions {
+  configFile?: string
+  configExists?: boolean
+  loadConfig?: () => MailsConfig
+  fetch?: typeof fetch
+  apiUrl?: string
+  timeoutMs?: number
+}
+
+export async function doctorCommand(options: DoctorOptions = {}) {
+  const configFile = options.configFile ?? CONFIG_FILE
+  const readConfig = options.loadConfig ?? loadConfig
+  const fetcher = options.fetch ?? fetch
+
   console.log('')
   console.log('  mails doctor')
   console.log('  ────────────')
   let allPassed = true
 
   // 1. Config file
-  const configExists = existsSync(CONFIG_FILE)
+  const configExists = options.configExists ?? existsSync(configFile)
   if (configExists) {
-    const config = loadConfig()
+    const config = readConfig()
     const maskedKey = config.api_key ? config.api_key.slice(0, 8) + '...' : '(not set)'
-    console.log(`  ✓ Config:   ${CONFIG_FILE}`)
+    console.log(`  ✓ Config:   ${configFile}`)
     console.log(`    mailbox:  ${config.mailbox || '(not set)'}`)
     console.log(`    api_key:  ${maskedKey}`)
   } else {
-    console.log(`  ✗ Config:   ${CONFIG_FILE} not found`)
+    console.log(`  ✗ Config:   ${configFile} not found`)
     console.log('    Run: mails claim <name>')
     allPassed = false
   }
 
   // 2. API connectivity + mailbox + send capability via /v1/me
-  const config = loadConfig()
+  const config = readConfig()
   if (config.api_key) {
-    const apiUrl = process.env.MAILS_API_URL || config.worker_url || 'https://api.mails0.com'
+    const apiUrl = options.apiUrl || process.env.MAILS_API_URL || config.worker_url || 'https://api.mails0.com'
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 3000)
     try {
-      const res = await fetch(`${apiUrl}/v1/me`, {
+      const res = await fetcher(`${apiUrl}/v1/me`, {
         headers: { 'Authorization': `Bearer ${config.api_key}` },
+        signal: controller.signal,
       })
       if (res.ok) {
         const data = await res.json() as { mailbox?: string; send?: boolean }
@@ -54,6 +71,8 @@ export async function doctorCommand() {
       console.log(`  ✗ API:      ${apiUrl} (cannot connect)`)
       console.log(`    Error:    ${err instanceof Error ? err.message : err}`)
       allPassed = false
+    } finally {
+      clearTimeout(timeout)
     }
   } else {
     console.log('  ⚠ API:      skipped (no api_key configured)')

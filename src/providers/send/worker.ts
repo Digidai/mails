@@ -17,9 +17,12 @@ export function createWorkerSendProvider(url: string, token?: string): SendProvi
         to: options.to,
         subject: options.subject,
       }
+      if (options.cc?.length) body.cc = options.cc
+      if (options.bcc?.length) body.bcc = options.bcc
       if (options.text) body.text = options.text
       if (options.html) body.html = options.html
       if (options.replyTo) body.reply_to = options.replyTo
+      if (options.inReplyTo) body.in_reply_to = options.inReplyTo
       if (options.headers && Object.keys(options.headers).length > 0) {
         body.headers = options.headers
       }
@@ -50,8 +53,8 @@ export function createWorkerSendProvider(url: string, token?: string): SendProvi
         throw new Error(`Worker send error: ${data.error ?? res.statusText}`)
       }
 
-      const data = await res.json() as { id: string; provider_id?: string }
-      return { id: data.id, provider: 'worker', provider_id: data.provider_id }
+      const data = await res.json() as { id: string; provider_id?: string; thread_id?: string | null }
+      return { id: data.id, provider: 'worker', provider_id: data.provider_id, thread_id: data.thread_id }
     },
   }
 }

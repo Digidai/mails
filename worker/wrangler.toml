@@ -2,6 +2,11 @@ name = "mails-worker"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
 
+# Custom domain: api.mails0.com → this Worker
+routes = [
+  { pattern = "api.mails0.com", custom_domain = true }
+]
+
 [[d1_databases]]
 binding = "DB"
 database_name = "mails"
@@ -36,6 +41,7 @@ service = "mails-gtm-agent"
 #   AUTH_TOKEN      - Legacy single API authentication token (no mailbox isolation)
 #   RESEND_API_KEY  - Resend API key for sending emails
 #   WEBHOOK_SECRET  - HMAC key for signing webhook payloads
+#   ALLOW_PUBLIC_API - Set to "true" only for local/dev to allow unauthenticated /api/*
 #
 # For mailbox isolation, use the auth_tokens D1 table instead of AUTH_TOKEN:
 #   INSERT INTO auth_tokens (token, mailbox) VALUES ('your-token', 'agent@example.com');

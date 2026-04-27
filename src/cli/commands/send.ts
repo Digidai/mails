@@ -2,11 +2,16 @@ import { send } from '../../core/send.js'
 
 interface ParsedArgs {
   values: Record<string, string>
+  lists: {
+    cc: string[]
+    bcc: string[]
+  }
   attachments: string[]
 }
 
 function parseArgs(args: string[]): ParsedArgs {
   const values: Record<string, string> = {}
+  const lists = { cc: [] as string[], bcc: [] as string[] }
   const attachments: string[] = []
 
   for (let i = 0; i < args.length; i++) {
@@ -17,6 +22,8 @@ function parseArgs(args: string[]): ParsedArgs {
       if (value && !value.startsWith('--')) {
         if (key === 'attach') {
           attachments.push(value)
+        } else if (key === 'cc' || key === 'bcc') {
+          lists[key]!.push(value)
         } else {
           values[key] = value
         }
@@ -25,14 +32,14 @@ function parseArgs(args: string[]): ParsedArgs {
     }
   }
 
-  return { values, attachments }
+  return { values, lists, attachments }
 }
 
 export async function sendCommand(args: string[]) {
-  const { values: opts, attachments } = parseArgs(args)
+  const { values: opts, lists, attachments } = parseArgs(args)
 
   if (!opts['to']) {
-    console.error('Usage: mails send --to <email> --subject <subject> --body <text> [--html <html>] [--from <from>] [--reply-to <email>] [--attach <path>]')
+    console.error('Usage: mails send --to <email> --subject <subject> --body <text> [--html <html>] [--from <from>] [--cc <email>] [--bcc <email>] [--reply-to <email>] [--in-reply-to <message-id>] [--attach <path>]')
     process.exit(1)
   }
 
@@ -49,10 +56,13 @@ export async function sendCommand(args: string[]) {
   const result = await send({
     from: opts['from'],
     to: opts['to'],
+    cc: lists.cc.length ? lists.cc : undefined,
+    bcc: lists.bcc.length ? lists.bcc : undefined,
     subject: opts['subject'],
     text: opts['body'],
     html: opts['html'],
     replyTo: opts['reply-to'],
+    inReplyTo: opts['in-reply-to'],
     attachments: attachments.map((path) => ({ path })),
   })
 
