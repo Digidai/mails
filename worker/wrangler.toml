@@ -42,6 +42,7 @@ service = "mails-gtm-agent"
 #   RESEND_API_KEY  - Resend API key for sending emails
 #   WEBHOOK_SECRET  - HMAC key for signing webhook payloads
 #   ALLOW_PUBLIC_API - Set to "true" only for local/dev to allow unauthenticated /api/*
+#   MAILS_GTM_WORKER_HOSTS - Optional comma-separated exact hostnames allowed to use the MAILS_GTM_WORKER service binding
 #
 # For mailbox isolation, use the auth_tokens D1 table instead of AUTH_TOKEN:
 #   INSERT INTO auth_tokens (token, mailbox) VALUES ('your-token', 'agent@example.com');

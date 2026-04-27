@@ -165,6 +165,42 @@ describe('handleSend', () => {
     expect(data.error).toContain('Too many recipients')
   })
 
+  test('returns 400 when combined to/cc/bcc recipients exceed 50', async () => {
+    const env = makeEnv({ RESEND_API_KEY: 'key' })
+    const recipients = Array.from({ length: 49 }, (_, i) => `user${i}@example.com`)
+    const req = jsonRequest({
+      from: 'a@b.com',
+      to: recipients,
+      cc: ['cc@example.com'],
+      bcc: ['bcc@example.com'],
+      subject: 'Hi',
+      text: 'Body',
+    })
+    const res = await handleSend(req, env)
+    expect(res.status).toBe(400)
+    const data = await res.json() as { error: string }
+    expect(data.error).toContain('Too many recipients')
+  })
+
+  test('returns 400 when too many attachments are provided', async () => {
+    const env = makeEnv({ RESEND_API_KEY: 'key' })
+    const attachments = Array.from({ length: 21 }, (_, i) => ({
+      filename: `file-${i}.txt`,
+      content: 'SGVsbG8=',
+    }))
+    const req = jsonRequest({
+      from: 'a@b.com',
+      to: ['c@d.com'],
+      subject: 'Hi',
+      text: 'Body',
+      attachments,
+    })
+    const res = await handleSend(req, env)
+    expect(res.status).toBe(400)
+    const data = await res.json() as { error: string }
+    expect(data.error).toContain('Too many attachments')
+  })
+
   test('returns 400 when subject too long (>998)', async () => {
     const env = makeEnv({ RESEND_API_KEY: 'key' })
     const req = jsonRequest({
@@ -796,6 +832,8 @@ describe('fireWebhook', () => {
 
     expect(capturedHeaders['X-Webhook-Signature']).toBeDefined()
     expect(capturedHeaders['X-Webhook-Signature']).toMatch(/^sha256=[0-9a-f]+$/)
+    expect(capturedHeaders['X-Webhook-Timestamp']).toMatch(/^\d+$/)
+    expect(capturedHeaders['X-Webhook-Signature-V2']).toMatch(/^t=\d+,v1=[0-9a-f]+$/)
 
     globalThis.fetch = originalFetch
   })

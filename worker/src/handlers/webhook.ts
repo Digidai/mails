@@ -28,15 +28,35 @@ async function signPayload(body: string, secret: string): Promise<string> {
   return `sha256=${hex}`
 }
 
+async function signPayloadV2(body: string, secret: string, timestamp: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(`${timestamp}.${body}`))
+  const hex = Array.from(new Uint8Array(signature))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
+  return `t=${timestamp},v1=${hex}`
+}
+
 /**
  * Check if a webhook URL targets the mails-gtm-agent Worker.
  * When true, use the MAILS_GTM_WORKER Service Binding instead of HTTP fetch
  * to avoid Cloudflare error 1042 on same-account worker-to-worker calls.
  */
-function isServiceBindingTarget(url: string): boolean {
+function isServiceBindingTarget(url: string, env: Env): boolean {
   try {
     const parsed = new URL(url)
-    return parsed.hostname.includes('mails-gtm-agent')
+    const allowedHosts = (env.MAILS_GTM_WORKER_HOSTS ?? 'mails-gtm-agent.genedai.workers.dev')
+      .split(',')
+      .map((host) => host.trim().toLowerCase())
+      .filter(Boolean)
+    return allowedHosts.includes(parsed.hostname.toLowerCase())
   } catch {
     return false
   }
@@ -88,11 +108,14 @@ async function fireToUrl(
 
   if (env.WEBHOOK_SECRET) {
     headers['X-Webhook-Signature'] = await signPayload(body, env.WEBHOOK_SECRET)
+    const timestamp = Math.floor(Date.now() / 1000).toString()
+    headers['X-Webhook-Timestamp'] = timestamp
+    headers['X-Webhook-Signature-V2'] = await signPayloadV2(body, env.WEBHOOK_SECRET, timestamp)
   }
 
   // Use Service Binding if the webhook URL points to mails-gtm-agent (same Cloudflare account).
   // This avoids error 1042 on worker-to-worker HTTP calls.
-  const useServiceBinding = env.MAILS_GTM_WORKER && isServiceBindingTarget(webhookUrl)
+  const useServiceBinding = env.MAILS_GTM_WORKER && isServiceBindingTarget(webhookUrl, env)
 
   // Keep total retry time under 15s to fit within Workers waitUntil() limits
   const retryDelays = [0, 1000, 3000, 8000]

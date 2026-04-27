@@ -1,6 +1,11 @@
 import type { Env } from '../types'
 import { recordEvent } from './events'
 
+const MAX_TOTAL_RECIPIENTS = 50
+const MAX_ATTACHMENTS = 20
+const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
+const MAX_TOTAL_ATTACHMENT_BYTES = 40 * 1024 * 1024
+
 export async function handleSend(request: Request, env: Env, mailbox?: string, ctx?: ExecutionContext): Promise<Response> {
   if (!env.RESEND_API_KEY) {
     return Response.json(
@@ -103,8 +108,9 @@ export async function handleSend(request: Request, env: Env, mailbox?: string, c
     return Response.json({ error: 'Either text or html body is required' }, { status: 400 })
   }
 
-  if (body.to.length > 50) {
-    return Response.json({ error: 'Too many recipients (max 50)' }, { status: 400 })
+  const recipientCount = body.to.length + (body.cc?.length ?? 0) + (body.bcc?.length ?? 0)
+  if (recipientCount > MAX_TOTAL_RECIPIENTS) {
+    return Response.json({ error: `Too many recipients (max ${MAX_TOTAL_RECIPIENTS} total across to/cc/bcc)` }, { status: 400 })
   }
 
   if (body.subject.length > 998) {
@@ -117,6 +123,10 @@ export async function handleSend(request: Request, env: Env, mailbox?: string, c
 
   // Validate attachment base64 encoding
   if (body.attachments && body.attachments.length > 0) {
+    if (body.attachments.length > MAX_ATTACHMENTS) {
+      return Response.json({ error: `Too many attachments (max ${MAX_ATTACHMENTS})` }, { status: 400 })
+    }
+    let totalAttachmentBytes = 0
     for (const att of body.attachments) {
       if (typeof att.filename !== 'string' || !att.filename) {
         return Response.json({ error: 'Attachment "filename" must be a non-empty string' }, { status: 400 })
@@ -128,6 +138,20 @@ export async function handleSend(request: Request, env: Env, mailbox?: string, c
       if (!/^[A-Za-z0-9+/]*={0,2}$/.test(att.content) || att.content.length % 4 !== 0) {
         return Response.json(
           { error: `Attachment "${att.filename}" has invalid base64 content` },
+          { status: 400 }
+        )
+      }
+      const decodedBytes = base64DecodedLength(att.content)
+      if (decodedBytes > MAX_ATTACHMENT_BYTES) {
+        return Response.json(
+          { error: `Attachment "${att.filename}" is too large (max ${MAX_ATTACHMENT_BYTES} bytes)` },
+          { status: 400 }
+        )
+      }
+      totalAttachmentBytes += decodedBytes
+      if (totalAttachmentBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
+        return Response.json(
+          { error: `Attachments are too large in total (max ${MAX_TOTAL_ATTACHMENT_BYTES} bytes)` },
           { status: 400 }
         )
       }
@@ -434,4 +458,9 @@ export function parseFromName(from: string): string {
 export function extractEmail(from: string): string {
   const match = from.match(/<([^>]+)>/)
   return match ? match[1]! : from
+}
+
+function base64DecodedLength(value: string): number {
+  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0
+  return Math.max(0, Math.floor(value.length * 3 / 4) - padding)
 }

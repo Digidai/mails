@@ -51,7 +51,23 @@ describe('Webhook Routes (Smart Routing)', () => {
     const res = await handleWebhookRoutes(request, url, env, 'test@test.com')
     expect(res.status).toBe(400)
     const data = await res.json() as { error: string }
-    expect(data.error).toContain('Invalid webhook_url')
+    expect(data.error).toContain('valid URL')
+  })
+
+  test('PUT /api/mailbox/routes rejects private webhook_url', async () => {
+    const { handleWebhookRoutes } = await import('../../worker/src/handlers/webhook-routes')
+    const env = { DB: {} } as any
+
+    const request = new Request('http://localhost/api/mailbox/routes', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label: 'code', webhook_url: 'http://10.0.0.1/hook' }),
+    })
+    const url = new URL('http://localhost/api/mailbox/routes')
+    const res = await handleWebhookRoutes(request, url, env, 'test@test.com')
+    expect(res.status).toBe(400)
+    const data = await res.json() as { error: string }
+    expect(data.error).toContain('private')
   })
 
   test('PUT /api/mailbox/routes upserts valid route', async () => {

@@ -60,6 +60,42 @@ describe('Mailbox PATCH/DELETE', () => {
     expect(data.deleted).toBe('test@test.com')
   })
 
+  test('DELETE /api/mailbox deletes attachment storage_key blobs', async () => {
+    const { handleMailbox } = await import('../../worker/src/handlers/mailbox')
+
+    const deletedKeys: string[] = []
+    const env = {
+      DB: {
+        prepare: (sql: string) => ({
+          bind: () => ({
+            all: async () => {
+              if (sql.includes('SELECT raw_key')) {
+                return { results: [{ raw_key: 'raw/test/1' }] }
+              }
+              if (sql.includes('SELECT storage_key')) {
+                return { results: [{ storage_key: 'attachments/test/1' }] }
+              }
+              return { results: [] }
+            },
+            run: async () => ({ meta: { changes: 1 } }),
+          }),
+        }),
+        batch: async () => [],
+      },
+      ATTACHMENTS: {
+        delete: async (key: string) => { deletedKeys.push(key) },
+      },
+    } as any
+
+    const request = new Request('http://localhost/api/mailbox', { method: 'DELETE' })
+    const res = await handleMailbox(request, env, 'test@test.com')
+    const data = await res.json() as { r2_blobs_deleted: number }
+
+    expect(res.status).toBe(200)
+    expect(deletedKeys).toEqual(['raw/test/1', 'attachments/test/1'])
+    expect(data.r2_blobs_deleted).toBe(2)
+  })
+
   test('PATCH /api/mailbox rejects invalid JSON', async () => {
     const { handleMailbox } = await import('../../worker/src/handlers/mailbox')
     const env = { DB: {} } as any
@@ -108,6 +144,14 @@ describe('Mailbox PATCH/DELETE', () => {
     const { handleMailbox } = await import('../../worker/src/handlers/mailbox')
     const res = await handleMailbox(makeRequest({ webhook_url: 'not-a-url' }), stubEnv(), 'test@test.com')
     expect(res.status).toBe(400)
+  })
+
+  test('PATCH rejects private webhook URLs', async () => {
+    const { handleMailbox } = await import('../../worker/src/handlers/mailbox')
+    const res = await handleMailbox(makeRequest({ webhook_url: 'http://127.0.0.1/hook' }), stubEnv(), 'test@test.com')
+    expect(res.status).toBe(400)
+    const data = await res.json() as { error: string }
+    expect(data.error).toContain('private')
   })
 
   test('PATCH rejects numeric webhook_url', async () => {

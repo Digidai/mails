@@ -1,4 +1,5 @@
 import type { Env } from '../types'
+import { validateWebhookUrl } from './url-safety'
 
 /**
  * GET /api/mailbox — return mailbox info including status
@@ -38,17 +39,9 @@ export async function handleMailbox(
           { status: 400 }
         )
       } else {
-        // Validate URL: must parse as valid http:// or https://
-        try {
-          const parsed = new URL(url)
-          if (!['http:', 'https:'].includes(parsed.protocol)) {
-            return Response.json(
-              { error: 'webhook_url must use http:// or https:// protocol' },
-              { status: 400 }
-            )
-          }
-        } catch {
-          return Response.json({ error: 'webhook_url is not a valid URL' }, { status: 400 })
+        const urlError = validateWebhookUrl(url)
+        if (urlError) {
+          return Response.json({ error: urlError }, { status: 400 })
         }
         updates.push({ col: 'webhook_url', val: url })
       }
@@ -95,10 +88,10 @@ export async function handleMailbox(
         }
         // Delete attachment blobs
         const attKeys = await env.DB.prepare(
-          "SELECT r2_key FROM attachments WHERE email_id IN (SELECT id FROM emails WHERE mailbox = ?) AND r2_key IS NOT NULL"
-        ).bind(mailbox).all<{ r2_key: string }>()
+          "SELECT storage_key FROM attachments WHERE email_id IN (SELECT id FROM emails WHERE mailbox = ?) AND storage_key IS NOT NULL"
+        ).bind(mailbox).all<{ storage_key: string }>()
         for (const row of attKeys.results ?? []) {
-          try { await env.ATTACHMENTS.delete(row.r2_key); r2Deleted++ } catch { /* best-effort */ }
+          try { await env.ATTACHMENTS.delete(row.storage_key); r2Deleted++ } catch { /* best-effort */ }
         }
       } catch (err) {
         console.warn('R2 cleanup during mailbox delete had errors (continuing with D1 delete):', err)

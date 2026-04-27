@@ -4,6 +4,7 @@ export interface Env {
   AI?: Ai
   VECTORIZE?: VectorizeIndex
   MAILS_GTM_WORKER?: Fetcher  // Service binding to mails-gtm-agent
+  MAILS_GTM_WORKER_HOSTS?: string
   AUTH_TOKEN?: string
   AUTH_TOKENS?: string
   ALLOW_PUBLIC_API?: string

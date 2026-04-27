@@ -69,7 +69,7 @@ export default {
 
     // /health is always public
     if (url.pathname === '/health') {
-      response = Response.json({ ok: true })
+      response = await handleHealth(env)
     } else if (url.pathname === '/api/resend-webhook' && request.method === 'POST') {
       // Resend delivery status callbacks — public endpoint, verified by Resend secret
       response = await handleResendWebhook(request, env, ctx)
@@ -336,34 +336,48 @@ export default {
       }
 
       // Stage 4: Insert email into D1 (with idempotency via UNIQUE on mailbox+message_id)
-      const statements = [
-        env.DB.prepare(`
-          INSERT OR IGNORE INTO emails (
-            id, mailbox, from_address, from_name, to_address, subject,
-            body_text, body_html, code, headers, metadata, message_id,
-            thread_id, in_reply_to, "references",
-            has_attachments, attachment_count, attachment_names, attachment_search_text,
-            raw_storage_key, direction, status, received_at, created_at
-          )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'inbound', 'received', ?, ?)
-        `).bind(
-          id, to, realFrom, fromName, to, subject,
-          parsed.bodyText.slice(0, 50000),
-          parsed.bodyHtml.slice(0, 100000),
-          code,
-          JSON.stringify(parsed.headers),
-          JSON.stringify({ envelope_from: from }),
-          parsed.messageId,
-          threadId,
-          parsed.inReplyTo,
-          parsed.references,
-          parsed.attachmentCount > 0 ? 1 : 0,
-          parsed.attachmentCount,
-          parsed.attachmentNames,
-          parsed.attachmentSearchText,
-          rawKey, now, now
-        ),
-        ...parsed.attachments.map((attachment) =>
+      const insertResult = await env.DB.prepare(`
+        INSERT OR IGNORE INTO emails (
+          id, mailbox, from_address, from_name, to_address, subject,
+          body_text, body_html, code, headers, metadata, message_id,
+          thread_id, in_reply_to, "references",
+          has_attachments, attachment_count, attachment_names, attachment_search_text,
+          raw_storage_key, direction, status, received_at, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'inbound', 'received', ?, ?)
+      `).bind(
+        id, to, realFrom, fromName, to, subject,
+        parsed.bodyText.slice(0, 50000),
+        parsed.bodyHtml.slice(0, 100000),
+        code,
+        JSON.stringify(parsed.headers),
+        JSON.stringify({ envelope_from: from }),
+        parsed.messageId,
+        threadId,
+        parsed.inReplyTo,
+        parsed.references,
+        parsed.attachmentCount > 0 ? 1 : 0,
+        parsed.attachmentCount,
+        parsed.attachmentNames,
+        parsed.attachmentSearchText,
+        rawKey, now, now
+      ).run()
+
+      if (!insertResult.meta.changes) {
+        console.log(`Duplicate inbound email ignored id=${id} to=${to} message_id=${parsed.messageId}`)
+        try {
+          await env.DB.prepare(
+            'UPDATE ingest_log SET status = ?, error_message = ? WHERE id = ?'
+          ).bind('parsed', 'duplicate message_id ignored', id).run()
+        } catch { /* non-critical */ }
+        if (rawKey && env.ATTACHMENTS) {
+          ctx.waitUntil(env.ATTACHMENTS.delete(rawKey).catch(() => {}))
+        }
+        return
+      }
+
+      if (parsed.attachments.length > 0) {
+        await env.DB.batch(parsed.attachments.map((attachment) =>
           env.DB.prepare(`
             INSERT OR IGNORE INTO attachments (
               id, email_id, filename, content_type, size_bytes,
@@ -379,10 +393,8 @@ export default {
             attachment.text_extraction_status, attachment.storage_key,
             attachment.created_at
           )
-        ),
-      ]
-
-      await env.DB.batch(statements)
+        ))
+      }
 
       // Stage 5: Update ingest log to parsed
       try {
@@ -496,6 +508,33 @@ export default {
     }
   },
 } satisfies ExportedHandler<Env>
+
+async function handleHealth(env: Env): Promise<Response> {
+  const checks: Record<string, boolean> = {
+    db: false,
+    attachments: Boolean(env.ATTACHMENTS),
+    ai: Boolean(env.AI),
+    vectorize: Boolean(env.VECTORIZE),
+  }
+
+  try {
+    const row = await env.DB.prepare('SELECT 1 AS ok').first<{ ok: number }>()
+    checks.db = row?.ok === 1
+  } catch (err) {
+    console.error('Health check failed:', err)
+  }
+
+  const healthy = checks.db
+  return Response.json(
+    {
+      ok: healthy,
+      status: healthy ? 'ok' : 'unhealthy',
+      service: 'mails-worker',
+      checks,
+    },
+    { status: healthy ? 200 : 503 }
+  )
+}
 
 /**
  * Check if a mailbox is paused. Returns true if paused, false otherwise.

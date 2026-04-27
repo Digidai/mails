@@ -1,4 +1,5 @@
 import type { Env } from '../types'
+import { validateWebhookUrl } from './url-safety'
 
 /**
  * Smart email routing: per-label webhook URLs.
@@ -51,13 +52,9 @@ export async function handleWebhookRoutes(
       return Response.json({ error: `Invalid label. Must be one of: ${validLabels.join(', ')}` }, { status: 400 })
     }
 
-    try {
-      const urlCheck = new URL(body.webhook_url)
-      if (!['http:', 'https:'].includes(urlCheck.protocol)) {
-        return Response.json({ error: 'webhook_url must be http or https' }, { status: 400 })
-      }
-    } catch {
-      return Response.json({ error: 'Invalid webhook_url' }, { status: 400 })
+    const urlError = validateWebhookUrl(body.webhook_url)
+    if (urlError) {
+      return Response.json({ error: urlError }, { status: 400 })
     }
 
     const id = crypto.randomUUID()
