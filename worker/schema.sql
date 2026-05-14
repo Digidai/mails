@@ -100,11 +100,15 @@ CREATE TABLE IF NOT EXISTS claim_sessions (
   status TEXT NOT NULL DEFAULT 'pending',
   api_key TEXT,
   mailbox TEXT,
+  ip_address TEXT,
+  user_agent TEXT,
   created_at TEXT NOT NULL,
   expires_at TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_claim_sessions_status ON claim_sessions(status, expires_at);
+CREATE INDEX IF NOT EXISTS idx_claim_sessions_ip_created ON claim_sessions(ip_address, created_at);
+CREATE INDEX IF NOT EXISTS idx_claim_sessions_created_at ON claim_sessions(created_at);
 
 -- Email labels for auto-classification
 CREATE TABLE IF NOT EXISTS email_labels (

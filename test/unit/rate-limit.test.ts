@@ -97,6 +97,77 @@ describe('Per-mailbox Send Rate Limits', () => {
     expect(res.status).toBe(429)
   })
 
+  test('blocks known phishing-style account verification subjects from untrusted mailbox', async () => {
+    let resendCalled = false
+    globalThis.fetch = mock(async () => {
+      resendCalled = true
+      return new Response(JSON.stringify({ id: 'should-not-send' }))
+    }) as typeof fetch
+
+    const db = {
+      prepare: (sql: string) => ({
+        bind: (..._args: unknown[]) => ({
+          first: async () => {
+            if (sql.includes('suppression_list')) return null
+            if (sql.includes('auth_tokens')) return null
+            if (sql.includes("direction = 'inbound'")) return { count: 0 }
+            return null
+          },
+          run: async () => ({ meta: { changes: 1 } }),
+          all: async () => ({ results: [] }),
+        }),
+      }),
+    } as unknown as D1Database
+
+    const env = { DB: db, RESEND_API_KEY: 'test' } as any
+    const mailbox = 'fresh@mails0.com'
+    const request = new Request('http://localhost/api/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: mailbox,
+        to: ['recipient@example.com'],
+        subject: 'Action Required: Verify Your Account',
+        text: 'Please verify your account at https://example.com/login',
+      }),
+    })
+
+    const res = await handleSend(request, env, mailbox)
+    expect(res.status).toBe(400)
+    expect(resendCalled).toBe(false)
+    const data = await res.json() as { error: string }
+    expect(data.error).toContain('abuse protection')
+  })
+
+  test('returns 429 when global daily send limit is reached', async () => {
+    const db = {
+      prepare: (sql: string) => ({
+        bind: (..._args: unknown[]) => ({
+          first: async () => {
+            if (sql.includes('suppression_list')) return null
+            if (sql.includes('SELECT created_at FROM auth_tokens')) {
+              return { created_at: '2026-01-01T00:00:00.000Z' }
+            }
+            if (sql.includes("direction = 'inbound'")) return { count: 1 }
+            if (sql.includes('COALESCE(SUM(count)')) return { count: 201 }
+            if (sql.includes('daily_send_counts')) return { count: 1 }
+            return null
+          },
+          run: async () => ({ meta: { changes: 1 } }),
+          all: async () => ({ results: [] }),
+        }),
+      }),
+    } as unknown as D1Database
+
+    const env = { DB: db, RESEND_API_KEY: 'test', GLOBAL_DAILY_SEND_LIMIT: '200' } as any
+    const mailbox = 'sender@mails0.com'
+    const res = await handleSend(makeRequest(mailbox), env, mailbox)
+
+    expect(res.status).toBe(429)
+    const data = await res.json() as { error: string }
+    expect(data.error).toContain('Global daily send limit')
+  })
+
   test('skips rate limit when no mailbox (self-hosted)', async () => {
     globalThis.fetch = mock(async () => {
       return new Response(JSON.stringify({ id: 'resend-nomail' }))

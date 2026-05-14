@@ -12,6 +12,10 @@ export interface Env {
   WEBHOOK_SECRET?: string
   RESEND_WEBHOOK_SECRET?: string
   DAILY_SEND_LIMIT?: string
+  GLOBAL_DAILY_SEND_LIMIT?: string
+  NEW_MAILBOX_SEND_LIMIT?: string
+  NEW_MAILBOX_SEND_WINDOW_HOURS?: string
+  SEND_ABUSE_GUARD_ENABLED?: string
   DAILY_CLAIM_LIMIT?: string
 }
 

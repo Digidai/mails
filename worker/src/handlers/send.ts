@@ -5,6 +5,20 @@ const MAX_TOTAL_RECIPIENTS = 50
 const MAX_ATTACHMENTS = 20
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
 const MAX_TOTAL_ATTACHMENT_BYTES = 40 * 1024 * 1024
+const DEFAULT_GLOBAL_DAILY_SEND_LIMIT = 200
+const DEFAULT_NEW_MAILBOX_SEND_LIMIT = 5
+const DEFAULT_NEW_MAILBOX_SEND_WINDOW_HOURS = 24
+
+const KNOWN_ABUSE_SUBJECTS = new Set([
+  'action required: verify your account',
+  'payment required for your account',
+  'your account requires attention',
+  'your account is past due',
+  'important: account update needed',
+  'security alert: account activity',
+  'notice: account status change',
+  'urgent: account verification required',
+])
 
 export async function handleSend(request: Request, env: Env, mailbox?: string, ctx?: ExecutionContext): Promise<Response> {
   if (!env.RESEND_API_KEY) {
@@ -172,6 +186,27 @@ export async function handleSend(request: Request, env: Env, mailbox?: string, c
   // Check suppression list for all recipients (fail-closed: reject if check fails)
   // Normalize to lowercase: suppression_list stores lowercase, but senders may use mixed case
   const allRecipients = [...body.to, ...(body.cc ?? []), ...(body.bcc ?? [])].map(e => e.toLowerCase())
+
+  if (mailbox) {
+    try {
+      const abuseResult = await checkOutboundAbuseGuard(env, mailbox, {
+        subject: body.subject,
+        text: body.text ?? '',
+        html: body.html ?? '',
+        recipients: allRecipients,
+      })
+      if (abuseResult) {
+        return Response.json({ error: abuseResult }, { status: 400 })
+      }
+    } catch (err) {
+      console.error('Outbound abuse guard failed, rejecting send:', err)
+      return Response.json(
+        { error: 'Unable to verify message safety, please try again' },
+        { status: 503 },
+      )
+    }
+  }
+
   try {
     const suppressedCheck = await checkSuppressionList(env, allRecipients)
     if (suppressedCheck) {
@@ -404,6 +439,99 @@ export async function checkSuppressionList(
   return row ?? null
 }
 
+type OutboundAbuseInput = {
+  subject: string
+  text: string
+  html: string
+  recipients: string[]
+}
+
+async function checkOutboundAbuseGuard(
+  env: Env,
+  mailbox: string,
+  input: OutboundAbuseInput,
+): Promise<string | null> {
+  if (env.SEND_ABUSE_GUARD_ENABLED === '0' || env.SEND_ABUSE_GUARD_ENABLED === 'false') {
+    return null
+  }
+
+  const risk = scoreOutboundRisk(input)
+  if (risk.score < 3) return null
+
+  let mailboxCreatedAt: string | null = null
+  let inboundCount = 0
+  try {
+    const tokenRow = await env.DB.prepare(
+      'SELECT created_at FROM auth_tokens WHERE mailbox = ? LIMIT 1'
+    ).bind(mailbox).first<{ created_at: string }>()
+    mailboxCreatedAt = tokenRow?.created_at ?? null
+
+    const inboundRow = await env.DB.prepare(
+      "SELECT COUNT(*) as count FROM emails WHERE mailbox = ? AND direction = 'inbound'"
+    ).bind(mailbox).first<{ count: number }>()
+    inboundCount = inboundRow?.count ?? 0
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.includes('no such table')) return null
+    throw err
+  }
+
+  const ageHours = mailboxCreatedAt ? hoursSince(mailboxCreatedAt) : null
+  const newOrUntrustedMailbox =
+    inboundCount === 0 ||
+    ageHours === null ||
+    ageHours < DEFAULT_NEW_MAILBOX_SEND_WINDOW_HOURS
+
+  if (KNOWN_ABUSE_SUBJECTS.has(input.subject.trim().toLowerCase()) && newOrUntrustedMailbox) {
+    return 'Message rejected by abuse protection: high-risk account/payment/security template'
+  }
+
+  if (risk.score >= 5 && newOrUntrustedMailbox) {
+    return `Message rejected by abuse protection: ${risk.flags.slice(0, 3).join(', ')}`
+  }
+
+  return null
+}
+
+function scoreOutboundRisk(input: OutboundAbuseInput): { score: number; flags: string[] } {
+  const subject = input.subject.trim().toLowerCase()
+  const body = `${input.text}\n${stripHtml(input.html)}`.toLowerCase()
+  const content = `${subject}\n${body}`
+  const flags: string[] = []
+  let score = 0
+
+  if (KNOWN_ABUSE_SUBJECTS.has(subject)) {
+    flags.push('known abuse subject')
+    score += 5
+  }
+  if (/\b(action required|urgent|immediate action|requires attention)\b/.test(subject)) {
+    flags.push('urgency language')
+    score += 1
+  }
+  if (/\b(verify|verification|confirm|update)\b/.test(content) && /\b(account|login|identity|email)\b/.test(content)) {
+    flags.push('account verification language')
+    score += 2
+  }
+  if (/\b(payment required|past due|overdue|unpaid|billing issue)\b/.test(content)) {
+    flags.push('payment pressure language')
+    score += 2
+  }
+  if (/\b(security alert|account activity|status change|suspicious activity)\b/.test(content)) {
+    flags.push('security alert impersonation language')
+    score += 2
+  }
+  if (/\b(click here|sign in|log in|login|reset password|update your account)\b/.test(content) && /https?:\/\//.test(content)) {
+    flags.push('credential-action link')
+    score += 2
+  }
+  if (input.recipients.length > 10) {
+    flags.push('bulk recipient fanout')
+    score += 1
+  }
+
+  return { score, flags }
+}
+
 /**
  * Check daily send rate limit for a mailbox using atomic increment-then-verify.
  * Increments the counter first (atomic), then checks the new count against the limit.
@@ -415,6 +543,12 @@ async function checkDailySendLimit(env: Env, mailbox: string): Promise<string | 
   try {
     const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
     const dailyLimit = env.DAILY_SEND_LIMIT ? parseInt(env.DAILY_SEND_LIMIT as string, 10) : 100
+    const globalDailyLimit = readNonNegativeInt(env.GLOBAL_DAILY_SEND_LIMIT, DEFAULT_GLOBAL_DAILY_SEND_LIMIT)
+    const newMailboxLimit = readNonNegativeInt(env.NEW_MAILBOX_SEND_LIMIT, DEFAULT_NEW_MAILBOX_SEND_LIMIT)
+    const newMailboxWindowHours = readNonNegativeInt(
+      env.NEW_MAILBOX_SEND_WINDOW_HOURS,
+      DEFAULT_NEW_MAILBOX_SEND_WINDOW_HOURS,
+    )
 
     // Atomic increment
     await env.DB.prepare(
@@ -434,7 +568,28 @@ async function checkDailySendLimit(env: Env, mailbox: string): Promise<string | 
       ).bind(mailbox, today).run()
       return `Daily send limit reached (${row.count - 1}/${dailyLimit})`
     }
-    // Under limit: increment already applied, no further action needed
+
+    if (row && newMailboxLimit > 0 && row.count > newMailboxLimit) {
+      const tokenRow = await env.DB.prepare(
+        'SELECT created_at FROM auth_tokens WHERE mailbox = ? LIMIT 1'
+      ).bind(mailbox).first<{ created_at: string }>()
+      const ageHours = tokenRow?.created_at ? hoursSince(tokenRow.created_at) : null
+      if (ageHours === null || ageHours < newMailboxWindowHours) {
+        await decrementDailySendCount(env, mailbox, today)
+        return `New mailbox send limit reached (${newMailboxLimit}/${newMailboxWindowHours}h warmup window)`
+      }
+    }
+
+    if (globalDailyLimit > 0) {
+      const globalRow = await env.DB.prepare(
+        'SELECT COALESCE(SUM(count), 0) as count FROM daily_send_counts WHERE date = ?'
+      ).bind(today).first<{ count: number }>()
+      if ((globalRow?.count ?? 0) > globalDailyLimit) {
+        await decrementDailySendCount(env, mailbox, today)
+        return `Global daily send limit reached (${globalDailyLimit}/day)`
+      }
+    }
+    // Under limits: increment already applied, no further action needed
   } catch (err) {
     // Fail-open: rate limit check failure should not block sending
     const msg = err instanceof Error ? err.message : String(err)
@@ -443,6 +598,12 @@ async function checkDailySendLimit(env: Env, mailbox: string): Promise<string | 
     }
   }
   return null
+}
+
+async function decrementDailySendCount(env: Env, mailbox: string, date: string): Promise<void> {
+  await env.DB.prepare(
+    'UPDATE daily_send_counts SET count = count - 1 WHERE mailbox = ? AND date = ?'
+  ).bind(mailbox, date).run()
 }
 
 /** @deprecated Rate limit counting is now handled inside checkDailySendLimit atomically. */
@@ -463,4 +624,21 @@ export function extractEmail(from: string): string {
 function base64DecodedLength(value: string): number {
   const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0
   return Math.max(0, Math.floor(value.length * 3 / 4) - padding)
+}
+
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, ' ')
+}
+
+function hoursSince(value: string): number | null {
+  const normalized = value.includes('T') ? value : `${value.replace(' ', 'T')}Z`
+  const parsed = Date.parse(normalized)
+  if (!Number.isFinite(parsed)) return null
+  return Math.max(0, (Date.now() - parsed) / 3_600_000)
+}
+
+function readNonNegativeInt(value: string | undefined, fallback: number): number {
+  if (!value) return fallback
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
 }
