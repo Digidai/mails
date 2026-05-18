@@ -15,6 +15,7 @@ export interface Env {
   GLOBAL_DAILY_SEND_LIMIT?: string
   NEW_MAILBOX_SEND_LIMIT?: string
   NEW_MAILBOX_SEND_WINDOW_HOURS?: string
+  RATE_LIMIT_FAIL_OPEN?: string
   SEND_ABUSE_GUARD_ENABLED?: string
   DAILY_CLAIM_LIMIT?: string
 }

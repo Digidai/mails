@@ -458,6 +458,10 @@ async function checkOutboundAbuseGuard(
   const risk = scoreOutboundRisk(input)
   if (risk.score < 3) return null
 
+  if (KNOWN_ABUSE_SUBJECTS.has(input.subject.trim().toLowerCase())) {
+    return 'Message rejected by abuse protection: high-risk account/payment/security template'
+  }
+
   let mailboxCreatedAt: string | null = null
   let inboundCount = 0
   try {
@@ -482,10 +486,6 @@ async function checkOutboundAbuseGuard(
     ageHours === null ||
     ageHours < DEFAULT_NEW_MAILBOX_SEND_WINDOW_HOURS
 
-  if (KNOWN_ABUSE_SUBJECTS.has(input.subject.trim().toLowerCase()) && newOrUntrustedMailbox) {
-    return 'Message rejected by abuse protection: high-risk account/payment/security template'
-  }
-
   if (risk.score >= 5 && newOrUntrustedMailbox) {
     return `Message rejected by abuse protection: ${risk.flags.slice(0, 3).join(', ')}`
   }
@@ -496,7 +496,8 @@ async function checkOutboundAbuseGuard(
 function scoreOutboundRisk(input: OutboundAbuseInput): { score: number; flags: string[] } {
   const subject = input.subject.trim().toLowerCase()
   const body = `${input.text}\n${stripHtml(input.html)}`.toLowerCase()
-  const content = `${subject}\n${body}`
+  const rawHtml = input.html.toLowerCase()
+  const content = `${subject}\n${body}\n${rawHtml}`
   const flags: string[] = []
   let score = 0
 
@@ -591,11 +592,19 @@ async function checkDailySendLimit(env: Env, mailbox: string): Promise<string | 
     }
     // Under limits: increment already applied, no further action needed
   } catch (err) {
-    // Fail-open: rate limit check failure should not block sending
+    // Production should fail closed on rate-limit storage errors to protect
+    // domain reputation. Self-hosted/legacy deployments without the table keep
+    // working, and local debugging can opt into fail-open explicitly.
     const msg = err instanceof Error ? err.message : String(err)
-    if (!msg.includes('no such table')) {
-      console.warn('Rate limit check failed (fail-open, allowing send):', err)
+    if (msg.includes('no such table')) {
+      return null
     }
+    if (env.RATE_LIMIT_FAIL_OPEN === '1' || env.RATE_LIMIT_FAIL_OPEN === 'true') {
+      console.warn('Rate limit check failed (explicit fail-open, allowing send):', err)
+      return null
+    }
+    console.error('Rate limit check failed, rejecting send:', err)
+    return 'Unable to verify send rate limits, please try again'
   }
   return null
 }
