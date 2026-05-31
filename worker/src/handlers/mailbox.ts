@@ -1,4 +1,5 @@
 import type { Env } from '../types'
+import { pauseMailbox, resumeMailbox } from '../lib/moderation'
 import { validateWebhookUrl } from './url-safety'
 
 /**
@@ -169,7 +170,11 @@ export async function handleMailbox(
 }
 
 /**
- * PATCH /api/mailbox/pause — set mailbox status to 'paused'
+ * PATCH /api/mailbox/pause — set mailbox status to 'paused'.
+ *
+ * Optional JSON body: { reason?: string, evidence?: object }.
+ * Defaults to reason='user_request' so manual pauses still leave a non-null
+ * audit trail.
  */
 export async function handleMailboxPause(
   request: Request,
@@ -184,19 +189,32 @@ export async function handleMailboxPause(
     return Response.json({ error: 'Mailbox required' }, { status: 400 })
   }
 
-  try {
-    await env.DB.prepare(
-      "UPDATE auth_tokens SET status = 'paused' WHERE mailbox = ?"
-    ).bind(mailbox).run()
-  } catch {
-    return Response.json({ error: 'Failed to pause mailbox (status column may not exist)' }, { status: 500 })
+  let reason = 'user_request'
+  let evidence: Record<string, unknown> | undefined
+  if (request.headers.get('content-length') && Number(request.headers.get('content-length')) > 0) {
+    try {
+      const body = await request.json() as { reason?: unknown; evidence?: unknown }
+      if (typeof body?.reason === 'string' && body.reason.trim()) reason = body.reason.trim()
+      if (body?.evidence && typeof body.evidence === 'object' && !Array.isArray(body.evidence)) {
+        evidence = body.evidence as Record<string, unknown>
+      }
+    } catch {
+      return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
+    }
   }
 
-  return Response.json({ mailbox, status: 'paused' })
+  try {
+    const result = await pauseMailbox(env.DB, mailbox, { reason, evidence })
+    return Response.json({ mailbox, status: 'paused', reason: result.reason, paused_at: result.paused_at })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to pause mailbox'
+    return Response.json({ error: message }, { status: 500 })
+  }
 }
 
 /**
- * PATCH /api/mailbox/resume — set mailbox status to 'active'
+ * PATCH /api/mailbox/resume — set mailbox status to 'active' and clear the
+ * pause audit fields so a future re-pause starts fresh.
  */
 export async function handleMailboxResume(
   request: Request,
@@ -212,12 +230,10 @@ export async function handleMailboxResume(
   }
 
   try {
-    await env.DB.prepare(
-      "UPDATE auth_tokens SET status = 'active' WHERE mailbox = ?"
-    ).bind(mailbox).run()
-  } catch {
-    return Response.json({ error: 'Failed to resume mailbox (status column may not exist)' }, { status: 500 })
+    await resumeMailbox(env.DB, mailbox)
+    return Response.json({ mailbox, status: 'active' })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to resume mailbox'
+    return Response.json({ error: message }, { status: 500 })
   }
-
-  return Response.json({ mailbox, status: 'active' })
 }

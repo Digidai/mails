@@ -87,7 +87,11 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
   scope TEXT DEFAULT 'full',
   status TEXT DEFAULT 'active',
   webhook_failures INTEGER DEFAULT 0,
-  webhook_status TEXT DEFAULT 'active'
+  webhook_status TEXT DEFAULT 'active',
+  -- Moderation audit trail (populated when status transitions to 'paused')
+  paused_at TEXT,                -- ISO timestamp of when the pause was applied
+  pause_reason TEXT,             -- Short machine-readable code (e.g. 'phishing_2026_05_12', 'bounce_rate_high', 'user_request')
+  pause_evidence TEXT            -- JSON snapshot of the evidence used to justify the pause
 );
 
 CREATE INDEX IF NOT EXISTS idx_auth_tokens_mailbox ON auth_tokens(mailbox);
