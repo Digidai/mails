@@ -74,10 +74,28 @@ export async function handleClaimAuto(
   // Generate new API key
   const apiKey = `mk_${generateToken(32)}`
   const now = new Date().toISOString()
+  // Send warm-up: brand-new mailboxes can receive/read immediately,
+  // but cannot send until 24h after claim. Defends against fresh-mailbox
+  // phishing fan-out (see 2026-05-12 incident).
+  const warmupHours = readPositiveInt(env.SEND_WARMUP_HOURS, 24)
+  const sendUnlocksAt =
+    warmupHours > 0 ? new Date(Date.now() + warmupHours * 3600 * 1000).toISOString() : null
 
-  await env.DB.prepare(
-    'INSERT INTO auth_tokens (token, mailbox, created_at) VALUES (?, ?, ?)'
-  ).bind(apiKey, mailbox, now).run()
+  try {
+    await env.DB.prepare(
+      'INSERT INTO auth_tokens (token, mailbox, created_at, send_unlocks_at) VALUES (?, ?, ?, ?)'
+    ).bind(apiKey, mailbox, now, sendUnlocksAt).run()
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    // Legacy schemas without send_unlocks_at — fall back to the 3-column insert.
+    if (msg.includes('no such column') || msg.includes('has no column named')) {
+      await env.DB.prepare(
+        'INSERT INTO auth_tokens (token, mailbox, created_at) VALUES (?, ?, ?)'
+      ).bind(apiKey, mailbox, now).run()
+    } else {
+      throw e
+    }
+  }
 
   // Activation funnel: track mailbox claim
   await recordEvent(env, 'activation.claimed', mailbox, { name, source: 'api' })
@@ -89,6 +107,12 @@ function generateToken(length: number): string {
   const bytes = new Uint8Array(length)
   crypto.getRandomValues(bytes)
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+function readPositiveInt(value: unknown, fallback: number): number {
+  if (typeof value !== 'string' && typeof value !== 'number') return fallback
+  const parsed = typeof value === 'number' ? value : Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
 }
 
 async function checkDailyClaimLimit(request: Request, env: Env): Promise<string | null> {

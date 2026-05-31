@@ -91,7 +91,14 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
   -- Moderation audit trail (populated when status transitions to 'paused')
   paused_at TEXT,                -- ISO timestamp of when the pause was applied
   pause_reason TEXT,             -- Short machine-readable code (e.g. 'phishing_2026_05_12', 'bounce_rate_high', 'user_request')
-  pause_evidence TEXT            -- JSON snapshot of the evidence used to justify the pause
+  pause_evidence TEXT,           -- JSON snapshot of the evidence used to justify the pause
+  -- Warm-up window for new mailboxes — NULL means "send unlocked" (legacy or graduated).
+  -- An ISO timestamp in the future means /api/send is blocked until that moment.
+  -- Set to created_at + 24h on every fresh claim; cleared lazily on first send check past the gate.
+  -- New mailboxes can receive / read / extract OTP codes normally during warm-up;
+  -- only outbound sending is gated. This is the right trade-off for the "AI agent
+  -- registers SaaS and grabs verification code" hot path.
+  send_unlocks_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_auth_tokens_mailbox ON auth_tokens(mailbox);
@@ -106,6 +113,11 @@ CREATE TABLE IF NOT EXISTS claim_sessions (
   mailbox TEXT,
   ip_address TEXT,
   user_agent TEXT,
+  -- Edge metadata from request.cf — populated when available (free, no extra latency)
+  country TEXT,          -- 2-letter ISO (e.g. "AU", "US")
+  asn INTEGER,           -- ASN number (e.g. 13335 = Cloudflare, 16509 = AWS, 14061 = DigitalOcean)
+  as_org TEXT,           -- ASN org name (e.g. "DIGITALOCEAN-ASN")
+  turnstile_verified INTEGER NOT NULL DEFAULT 0,  -- 1 if a valid Turnstile token was supplied at confirm()
   created_at TEXT NOT NULL,
   expires_at TEXT NOT NULL
 );
@@ -113,6 +125,7 @@ CREATE TABLE IF NOT EXISTS claim_sessions (
 CREATE INDEX IF NOT EXISTS idx_claim_sessions_status ON claim_sessions(status, expires_at);
 CREATE INDEX IF NOT EXISTS idx_claim_sessions_ip_created ON claim_sessions(ip_address, created_at);
 CREATE INDEX IF NOT EXISTS idx_claim_sessions_created_at ON claim_sessions(created_at);
+CREATE INDEX IF NOT EXISTS idx_claim_sessions_asn ON claim_sessions(asn) WHERE asn IS NOT NULL;
 
 -- Email labels for auto-classification
 CREATE TABLE IF NOT EXISTS email_labels (

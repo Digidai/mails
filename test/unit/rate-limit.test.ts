@@ -382,3 +382,156 @@ describe('Per-mailbox Send Rate Limits', () => {
     expect(incrementCalled).toBe(true)
   })
 })
+
+describe('Send Warm-up Gate', () => {
+  const originalFetch = globalThis.fetch
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+    mock.restore()
+  })
+
+  function makeRequest(from: string) {
+    return new Request('http://localhost/api/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from,
+        to: ['recipient@example.com'],
+        subject: 'Hello from the warm-up test',
+        text: 'Body',
+      }),
+    })
+  }
+
+  test('rejects send while warm-up window is in the future', async () => {
+    let resendCalled = false
+    globalThis.fetch = mock(async () => {
+      resendCalled = true
+      return new Response(JSON.stringify({ id: 'should-not-send' }))
+    }) as typeof fetch
+
+    const futureUnlock = new Date(Date.now() + 12 * 3600 * 1000).toISOString()
+    const db = {
+      prepare: (sql: string) => ({
+        bind: (..._args: unknown[]) => ({
+          first: async () => {
+            if (sql.includes('send_unlocks_at')) return { send_unlocks_at: futureUnlock }
+            if (sql.includes('suppression_list')) return null
+            return null
+          },
+          run: async () => ({ meta: { changes: 1 } }),
+          all: async () => ({ results: [] }),
+        }),
+      }),
+    } as unknown as D1Database
+
+    const env = { DB: db, RESEND_API_KEY: 'test' } as any
+    const mailbox = 'fresh@mails0.com'
+    const res = await handleSend(makeRequest(mailbox), env, mailbox)
+
+    expect(res.status).toBe(403)
+    expect(resendCalled).toBe(false)
+    const data = await res.json() as { error: string; send_unlocks_at: string; warmup_remaining_seconds: number }
+    expect(data.error).toContain('warm-up')
+    expect(data.send_unlocks_at).toBe(futureUnlock)
+    expect(data.warmup_remaining_seconds).toBeGreaterThan(0)
+    expect(res.headers.get('Retry-After')).toBeTruthy()
+  })
+
+  test('allows send after warm-up window elapsed (auto-clears column)', async () => {
+    let resendCalled = false
+    let clearedWarmup = false
+    globalThis.fetch = mock(async () => {
+      resendCalled = true
+      return new Response(JSON.stringify({ id: 'warmup-cleared' }))
+    }) as typeof fetch
+
+    const pastUnlock = new Date(Date.now() - 5 * 60 * 1000).toISOString()
+    const db = {
+      prepare: (sql: string) => ({
+        bind: (..._args: unknown[]) => ({
+          first: async () => {
+            if (sql.includes('send_unlocks_at')) return { send_unlocks_at: pastUnlock }
+            if (sql.includes('suppression_list')) return null
+            return null
+          },
+          run: async () => {
+            if (sql.includes('UPDATE auth_tokens SET send_unlocks_at = NULL')) {
+              clearedWarmup = true
+            }
+            return { meta: { changes: 1 } }
+          },
+          all: async () => ({ results: [] }),
+        }),
+      }),
+    } as unknown as D1Database
+
+    const env = { DB: db, RESEND_API_KEY: 'test' } as any
+    const mailbox = 'graduated@mails0.com'
+    const res = await handleSend(makeRequest(mailbox), env, mailbox)
+
+    expect(res.status).toBe(200)
+    expect(resendCalled).toBe(true)
+    expect(clearedWarmup).toBe(true)
+  })
+
+  test('skips warm-up check when SEND_WARMUP_ENABLED=0', async () => {
+    globalThis.fetch = mock(async () => {
+      return new Response(JSON.stringify({ id: 'bypass' }))
+    }) as typeof fetch
+
+    const futureUnlock = new Date(Date.now() + 23 * 3600 * 1000).toISOString()
+    let warmupQueried = false
+    const db = {
+      prepare: (sql: string) => ({
+        bind: (..._args: unknown[]) => ({
+          first: async () => {
+            if (sql.includes('send_unlocks_at')) {
+              warmupQueried = true
+              return { send_unlocks_at: futureUnlock }
+            }
+            if (sql.includes('suppression_list')) return null
+            return null
+          },
+          run: async () => ({ meta: { changes: 1 } }),
+          all: async () => ({ results: [] }),
+        }),
+      }),
+    } as unknown as D1Database
+
+    const env = { DB: db, RESEND_API_KEY: 'test', SEND_WARMUP_ENABLED: '0' } as any
+    const mailbox = 'bypass@mails0.com'
+    const res = await handleSend(makeRequest(mailbox), env, mailbox)
+
+    expect(res.status).toBe(200)
+    expect(warmupQueried).toBe(false)
+  })
+
+  test('fails open if send_unlocks_at column does not exist (legacy schema)', async () => {
+    globalThis.fetch = mock(async () => {
+      return new Response(JSON.stringify({ id: 'legacy-ok' }))
+    }) as typeof fetch
+
+    const db = {
+      prepare: (sql: string) => ({
+        bind: (..._args: unknown[]) => ({
+          first: async () => {
+            if (sql.includes('send_unlocks_at')) {
+              throw new Error('no such column: send_unlocks_at')
+            }
+            if (sql.includes('suppression_list')) return null
+            return null
+          },
+          run: async () => ({ meta: { changes: 1 } }),
+          all: async () => ({ results: [] }),
+        }),
+      }),
+    } as unknown as D1Database
+
+    const env = { DB: db, RESEND_API_KEY: 'test' } as any
+    const mailbox = 'legacy@mails0.com'
+    const res = await handleSend(makeRequest(mailbox), env, mailbox)
+
+    expect(res.status).toBe(200)
+  })
+})

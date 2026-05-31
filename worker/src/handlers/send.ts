@@ -187,6 +187,26 @@ export async function handleSend(request: Request, env: Env, mailbox?: string, c
   // Normalize to lowercase: suppression_list stores lowercase, but senders may use mixed case
   const allRecipients = [...body.to, ...(body.cc ?? []), ...(body.bcc ?? [])].map(e => e.toLowerCase())
 
+  // Warm-up gate — new mailboxes cannot send for the first 24h after claim.
+  // Inbound + read paths remain open (this is the agent-OTP hot path).
+  if (mailbox) {
+    try {
+      const warmupResult = await checkSendWarmup(env, mailbox)
+      if (warmupResult) {
+        return Response.json(warmupResult.body, {
+          status: 403,
+          headers: warmupResult.retryAt
+            ? { 'Retry-After': String(warmupResult.retryAt) }
+            : undefined,
+        })
+      }
+    } catch (err) {
+      // Fail-open on storage errors so a single bad query doesn't lock out
+      // a legitimate mailbox. The abuse guard below still applies.
+      console.warn('Send warm-up check errored, continuing:', err)
+    }
+  }
+
   if (mailbox) {
     try {
       const abuseResult = await checkOutboundAbuseGuard(env, mailbox, {
@@ -437,6 +457,73 @@ export async function checkSuppressionList(
     `SELECT email, reason FROM suppression_list WHERE email IN (${placeholders}) LIMIT 1`
   ).bind(...recipients).first<{ email: string; reason: string }>()
   return row ?? null
+}
+
+type WarmupResult = {
+  body: { error: string; send_unlocks_at: string; warmup_remaining_seconds: number }
+  retryAt: number
+}
+
+/**
+ * Check the send warm-up window for a mailbox.
+ *
+ * Returns null when the mailbox can send. Returns a structured rejection when
+ * the mailbox is still in its warm-up window (send_unlocks_at in the future).
+ *
+ * Auto-unlocks (clears send_unlocks_at) when the window has elapsed — this
+ * way the column means "warming up right now" rather than "ever warmed up,"
+ * keeps queries cheap, and provides a single source of truth for the audit.
+ *
+ * Fails open if the auth_tokens.send_unlocks_at column doesn't exist (older
+ * deployments running before migration 0012 land).
+ */
+async function checkSendWarmup(env: Env, mailbox: string): Promise<WarmupResult | null> {
+  if (env.SEND_WARMUP_ENABLED === '0' || env.SEND_WARMUP_ENABLED === 'false') {
+    return null
+  }
+
+  let row: { send_unlocks_at: string | null } | null = null
+  try {
+    row = await env.DB.prepare(
+      'SELECT send_unlocks_at FROM auth_tokens WHERE mailbox = ? LIMIT 1'
+    ).bind(mailbox).first<{ send_unlocks_at: string | null }>()
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.includes('no such column') || msg.includes('has no column')) {
+      return null
+    }
+    throw err
+  }
+
+  if (!row || !row.send_unlocks_at) return null
+
+  const unlockMs = Date.parse(row.send_unlocks_at)
+  if (!Number.isFinite(unlockMs)) {
+    // Garbage timestamp — clear and allow send.
+    await env.DB.prepare(
+      'UPDATE auth_tokens SET send_unlocks_at = NULL WHERE mailbox = ?'
+    ).bind(mailbox).run().catch(() => undefined)
+    return null
+  }
+
+  const remainingMs = unlockMs - Date.now()
+  if (remainingMs <= 0) {
+    // Window elapsed — graduate the mailbox.
+    await env.DB.prepare(
+      'UPDATE auth_tokens SET send_unlocks_at = NULL WHERE mailbox = ?'
+    ).bind(mailbox).run().catch(() => undefined)
+    return null
+  }
+
+  const remainingSec = Math.ceil(remainingMs / 1000)
+  return {
+    body: {
+      error: `Mailbox is in warm-up. New mailboxes cannot send until 24h after claim. Unlocks at ${row.send_unlocks_at}.`,
+      send_unlocks_at: row.send_unlocks_at,
+      warmup_remaining_seconds: remainingSec,
+    },
+    retryAt: remainingSec,
+  }
 }
 
 type OutboundAbuseInput = {

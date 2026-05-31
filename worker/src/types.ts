@@ -17,7 +17,12 @@ export interface Env {
   NEW_MAILBOX_SEND_WINDOW_HOURS?: string
   RATE_LIMIT_FAIL_OPEN?: string
   SEND_ABUSE_GUARD_ENABLED?: string
+  SEND_WARMUP_ENABLED?: string
+  /** Hours a brand-new mailbox must wait before /api/send is allowed. Default 24. Set "0" to disable. */
+  SEND_WARMUP_HOURS?: string
   DAILY_CLAIM_LIMIT?: string
+  /** Cloudflare Turnstile secret key. When set, /v1/claim/confirm requires a valid token. */
+  TURNSTILE_SECRET?: string
 }
 
 export interface AuthContext {
