@@ -23,6 +23,8 @@ export interface Env {
   DAILY_CLAIM_LIMIT?: string
   /** Cloudflare Turnstile secret key. When set, /v1/claim/confirm requires a valid token. */
   TURNSTILE_SECRET?: string
+  /** Domain that claimed mailboxes are created under (e.g. "mail.openjobs-ai.com"). Defaults to "mails0.com". */
+  MAILBOX_DOMAIN?: string
 }
 
 export interface AuthContext {

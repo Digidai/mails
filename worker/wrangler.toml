@@ -25,6 +25,11 @@ database_id = "8f2ecd1d-9ca2-48e1-87b1-bdbea870aee3"
 binding = "ATTACHMENTS"
 bucket_name = "mails-attachments"
 
+# Domain that self-service claimed mailboxes (POST /v1/claim/auto) are created
+# under. Without this, claims default to the hosted product's domain.
+[vars]
+MAILBOX_DOMAIN = "mail.openjobs-ai.com"
+
 # Workers AI (free tier, for generating embeddings)
 [ai]
 binding = "AI"

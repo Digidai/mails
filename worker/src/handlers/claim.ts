@@ -61,7 +61,15 @@ export async function handleClaimAuto(
     return Response.json({ error: `Name "${name}" is reserved` }, { status: 400 })
   }
 
-  const mailbox = `${name}@mails0.com`
+  // Domain that claimed mailboxes live under. Configurable per deployment via
+  // MAILBOX_DOMAIN; defaults to the hosted product's domain for compatibility.
+  const domain = (env.MAILBOX_DOMAIN?.trim().toLowerCase()) || 'mails0.com'
+  if (!/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$/.test(domain)) {
+    console.error(`Invalid MAILBOX_DOMAIN configured: "${domain}"`)
+    return Response.json({ error: 'Server misconfigured: invalid mailbox domain' }, { status: 500 })
+  }
+
+  const mailbox = `${name}@${domain}`
 
   // Check if mailbox already exists
   const existing = await env.DB.prepare(
@@ -81,17 +89,25 @@ export async function handleClaimAuto(
   const sendUnlocksAt =
     warmupHours > 0 ? new Date(Date.now() + warmupHours * 3600 * 1000).toISOString() : null
 
+  // Self-service mailboxes are isolated: a 'mailbox'-scoped token can only
+  // operate on its own address (it cannot read or send as other mailboxes).
   try {
     await env.DB.prepare(
-      'INSERT INTO auth_tokens (token, mailbox, created_at, send_unlocks_at) VALUES (?, ?, ?, ?)'
+      "INSERT INTO auth_tokens (token, mailbox, created_at, send_unlocks_at, scope) VALUES (?, ?, ?, ?, 'mailbox')"
     ).bind(apiKey, mailbox, now, sendUnlocksAt).run()
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
-    // Legacy schemas without send_unlocks_at — fall back to the 3-column insert.
+    // Legacy schemas without send_unlocks_at and/or scope — fall back progressively.
     if (msg.includes('no such column') || msg.includes('has no column named')) {
-      await env.DB.prepare(
-        'INSERT INTO auth_tokens (token, mailbox, created_at) VALUES (?, ?, ?)'
-      ).bind(apiKey, mailbox, now).run()
+      try {
+        await env.DB.prepare(
+          "INSERT INTO auth_tokens (token, mailbox, created_at, scope) VALUES (?, ?, ?, 'mailbox')"
+        ).bind(apiKey, mailbox, now).run()
+      } catch {
+        await env.DB.prepare(
+          'INSERT INTO auth_tokens (token, mailbox, created_at) VALUES (?, ?, ?)'
+        ).bind(apiKey, mailbox, now).run()
+      }
     } else {
       throw e
     }
