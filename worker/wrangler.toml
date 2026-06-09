@@ -2,16 +2,25 @@ name = "mails-worker"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
 
-# Custom domain: api.mails0.com → this Worker
-routes = [
-  { pattern = "api.mails0.com", custom_domain = true }
-]
+account_id = "4b4868590744ff4d63ce6b55c96df01a"
+workers_dev = true
+
+# NOTE: openjobs-ai.com is not a zone on this Cloudflare account, so the Worker
+# is served on its *.workers.dev URL (no custom domain, no Cloudflare Email
+# Routing). Mail is sent AND received via Resend:
+#   - Outbound: Resend API (RESEND_API_KEY)
+#   - Inbound:  Resend Inbound -> webhook POST /api/resend-webhook
+#               (and dedicated /api/resend-inbound), verified by Svix signature
+#               using RESEND_WEBHOOK_SECRET.
+# To move to a CF custom domain + CF Email Routing later, add the zone to this
+# account and restore the `routes` block from wrangler.toml.bak.
 
 [[d1_databases]]
 binding = "DB"
 database_name = "mails"
-database_id = "300b8760-fc02-4b1d-b0c1-bb560ec3b65e"
+database_id = "8f2ecd1d-9ca2-48e1-87b1-bdbea870aee3"
 
+# R2 bucket for large attachments (R2 enabled on account 2026-06-09)
 [[r2_buckets]]
 binding = "ATTACHMENTS"
 bucket_name = "mails-attachments"
@@ -20,30 +29,17 @@ bucket_name = "mails-attachments"
 [ai]
 binding = "AI"
 
-# Vectorize index for semantic search (optional, beta)
-# Create once: wrangler vectorize create mails-embeddings --dimensions 768 --metric cosine
-[[vectorize]]
-binding = "VECTORIZE"
-index_name = "mails-embeddings"
-
-# Email Routing: receive emails via email() handler
-# The catch-all rule in Cloudflare Dashboard routes *@yourdomain.com → this Worker
+# Hourly cron: clean up old SSE events (see scheduled() handler)
 [triggers]
-send_email = [{ name = "EMAIL" }]
-crons = ["0 * * * *"]  # Hourly: clean up old SSE events
-
-# Service binding to mails-gtm-agent (avoids error 1042 on same-account webhook calls)
-[[services]]
-binding = "MAILS_GTM_WORKER"
-service = "mails-gtm-agent"
+crons = ["0 * * * *"]
 
 # Secrets (set via `wrangler secret put`):
-#   AUTH_TOKEN      - Legacy single API authentication token (no mailbox isolation)
-#   RESEND_API_KEY  - Resend API key for sending emails
-#   WEBHOOK_SECRET  - HMAC key for signing webhook payloads
-#   ALLOW_PUBLIC_API - Set to "true" only for local/dev to allow unauthenticated /api/*
-#   MAILS_GTM_WORKER_HOSTS - Optional comma-separated exact hostnames allowed to use the MAILS_GTM_WORKER service binding
+#   AUTH_TOKEN            - API authentication token
+#   RESEND_API_KEY        - Resend API key for sending + fetching inbound bodies
+#   RESEND_WEBHOOK_SECRET - Svix signing secret for the Resend webhook
+#                           (delivery events + inbound email.received)
 #
-# For mailbox isolation, use the auth_tokens D1 table instead of AUTH_TOKEN:
-#   INSERT INTO auth_tokens (token, mailbox) VALUES ('your-token', 'agent@example.com');
-#   INSERT INTO auth_tokens (token, mailbox, webhook_url) VALUES ('tok', 'agent@example.com', 'https://...');
+# Bindings omitted vs. the upstream config (not available on this account):
+#   - Vectorize index        (semantic search; create + add binding later)
+#   - MAILS_GTM_WORKER service binding (target Worker not deployed here)
+#   - send_email / EMAIL binding (unused; sending goes through Resend)

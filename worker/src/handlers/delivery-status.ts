@@ -1,45 +1,8 @@
 import type { Env } from '../types'
 import { recordEvent } from './events'
 import { fireWebhookWithRetry } from './webhook'
-
-/**
- * Verify Resend webhook signature (Svix).
- * Resend signs webhooks with svix-id, svix-timestamp, svix-signature headers.
- * See: https://resend.com/docs/dashboard/webhooks/introduction
- */
-async function verifyResendSignature(
-  request: Request,
-  rawBody: string,
-  secret: string,
-): Promise<boolean> {
-  const svixId = request.headers.get('svix-id')
-  const svixTimestamp = request.headers.get('svix-timestamp')
-  const svixSignature = request.headers.get('svix-signature')
-
-  if (!svixId || !svixTimestamp || !svixSignature) return false
-
-  // Reject timestamps older than 5 minutes
-  const ts = parseInt(svixTimestamp, 10)
-  const now = Math.floor(Date.now() / 1000)
-  if (Math.abs(now - ts) > 300) return false
-
-  // Svix secret is base64-encoded after "whsec_" prefix
-  const secretBytes = Uint8Array.from(atob(secret.replace(/^whsec_/, '')), c => c.charCodeAt(0))
-
-  const toSign = `${svixId}.${svixTimestamp}.${rawBody}`
-  const key = await crypto.subtle.importKey(
-    'raw', secretBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
-  )
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(toSign))
-  const expected = btoa(String.fromCharCode(...new Uint8Array(sig)))
-
-  // svix-signature may contain multiple signatures separated by spaces (v1,xxx v1,yyy)
-  const signatures = svixSignature.split(' ')
-  return signatures.some(s => {
-    const val = s.split(',')[1]
-    return val === expected
-  })
-}
+import { verifyResendSignature } from './resend-sig'
+import { processResendInboundEvent } from './inbound'
 
 /**
  * Resend webhook callback handler.
@@ -83,6 +46,13 @@ export async function handleResendWebhook(
     body = JSON.parse(rawBody)
   } catch {
     return Response.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+
+  // Inbound email (Resend Inbound) — a single Resend webhook endpoint can be
+  // subscribed to both delivery events and email.received; dispatch the latter
+  // to the inbound ingestion path.
+  if (body.type === 'email.received') {
+    return processResendInboundEvent(body, env, ctx)
   }
 
   const resendId = body.data?.email_id
