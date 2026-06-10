@@ -1,8 +1,8 @@
 import PostalMime, { type Attachment as PostalMimeAttachment } from 'postal-mime'
 import type { Attachment, AttachmentTextExtractionStatus } from '../../src/core/types.js'
 
-const TEXT_EXTRACTION_LIMIT_BYTES = 10 * 1024 * 1024
-const TEXT_ATTACHMENT_TYPES = new Set([
+export const TEXT_EXTRACTION_LIMIT_BYTES = 10 * 1024 * 1024
+export const TEXT_ATTACHMENT_TYPES = new Set([
   'application/json',
   'text/csv',
   'text/markdown',

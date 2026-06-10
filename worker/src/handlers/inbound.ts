@@ -1,6 +1,6 @@
 import type { Env } from '../types'
 import type { ParsedAttachment } from '../mime'
-import { attachmentContentToUint8Array } from '../mime'
+import { attachmentContentToUint8Array, TEXT_EXTRACTION_LIMIT_BYTES, TEXT_ATTACHMENT_TYPES } from '../mime'
 
 type TextExtractionStatus = ParsedAttachment['text_extraction_status']
 import { extractCode } from '../extract-code'
@@ -16,14 +16,6 @@ const R2_UPLOAD_THRESHOLD = 100_000 // 100KB
 const MAX_ATTACHMENT_SIZE = 100 * 1024 * 1024 // 100MB
 const R2_UPLOAD_TIMEOUT = 30_000 // 30s
 
-// Mirrors the text-extraction policy in mime.ts (those consts are not exported).
-const TEXT_EXTRACTION_LIMIT_BYTES = 10 * 1024 * 1024 // 10MB
-const TEXT_ATTACHMENT_TYPES = new Set([
-  'application/json',
-  'text/csv',
-  'text/markdown',
-  'text/plain',
-])
 
 /**
  * Already-parsed inbound email, ready to persist. Both the Cloudflare Email
@@ -347,7 +339,7 @@ async function fetchInboundAttachments(
       textStatus = 'too_large'
     } else if (downloadUrl && env.ATTACHMENTS) {
       try {
-        const dl = await fetch(downloadUrl)
+        const dl = await fetch(downloadUrl, { signal: AbortSignal.timeout(R2_UPLOAD_TIMEOUT) })
         if (!dl.ok) throw new Error(`download HTTP ${dl.status}`)
         const buf = await dl.arrayBuffer()
         if (buf.byteLength > MAX_ATTACHMENT_SIZE) {
@@ -412,6 +404,11 @@ export async function processResendInboundEvent(
   const emailId = typeof body.data?.email_id === 'string' ? body.data.email_id : null
   if (!emailId) {
     return Response.json({ error: 'Missing data.email_id' }, { status: 400 })
+  }
+  // Constrain the id before interpolating it into the Resend API URL (defense in
+  // depth — this path is already signature-gated). Resend ids are uuid-like.
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(emailId)) {
+    return Response.json({ error: 'Invalid data.email_id' }, { status: 400 })
   }
   if (!env.RESEND_API_KEY) {
     return Response.json({ error: 'RESEND_API_KEY not configured' }, { status: 503 })

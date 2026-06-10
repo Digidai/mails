@@ -323,8 +323,15 @@ export async function handleSend(request: Request, env: Env, mailbox?: string, c
   if (body.html) resendBody.html = body.html
   if (body.reply_to) resendBody.reply_to = body.reply_to
 
-  // Merge in_reply_to / references into headers
-  const mergedHeaders: Record<string, string> = { ...(body.headers ?? {}) }
+  // Merge a SAFE SUBSET of caller-supplied headers, then In-Reply-To/References.
+  // `from` is already pinned to the mailbox; without this allowlist a caller
+  // could inject arbitrary RFC5322 headers (Reply-To/Return-Path/From-overrides)
+  // and bypass that pinning or harm deliverability.
+  const ALLOWED_HEADERS = new Set(['reply-to', 'in-reply-to', 'references', 'x-entity-ref-id'])
+  const mergedHeaders: Record<string, string> = {}
+  for (const [k, v] of Object.entries(body.headers ?? {})) {
+    if (typeof v === 'string' && ALLOWED_HEADERS.has(k.toLowerCase())) mergedHeaders[k] = v
+  }
   if (inReplyToHeader) mergedHeaders['In-Reply-To'] = inReplyToHeader
   if (referencesHeader) mergedHeaders['References'] = referencesHeader
 
@@ -700,11 +707,6 @@ async function decrementDailySendCount(env: Env, mailbox: string, date: string):
   await env.DB.prepare(
     'UPDATE daily_send_counts SET count = count - 1 WHERE mailbox = ? AND date = ?'
   ).bind(mailbox, date).run()
-}
-
-/** @deprecated Rate limit counting is now handled inside checkDailySendLimit atomically. */
-async function incrementDailySendCount(env: Env, _mailbox: string): Promise<void> {
-  // No-op: counting is now part of checkDailySendLimit's atomic increment-then-verify
 }
 
 export function parseFromName(from: string): string {

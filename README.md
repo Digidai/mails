@@ -21,9 +21,9 @@ Unlike raw email APIs that only send, mails gives your agent a complete email id
 ## Features
 
 - **Send emails** — via Resend with CC/BCC, In-Reply-To threading, and attachment support
-- **Receive emails** — via Cloudflare Email Routing → Worker → D1, with raw-first R2 persistence (zero email loss)
+- **Receive emails** — via Cloudflare Email Routing **or** Resend Inbound → Worker → D1, with raw-first R2 persistence (zero email loss)
 - **Search inbox** — FTS5 full-text search across subject, body, sender, code
-- **Semantic search** — AI-powered vector search via Workers AI + Cloudflare Vectorize (keyword, semantic, hybrid modes)
+- **Semantic search** — AI-powered vector search via Workers AI + Cloudflare Vectorize (keyword, semantic, hybrid modes). Semantic/hybrid require an `AI` binding **and** a `VECTORIZE` index in `wrangler.toml`; without them, search transparently falls back to keyword (FTS5) only.
 - **Dashboard console** — visual email management UI at `mails0.com/console`
 - **Verification code extraction** — auto-extracts 4-8 char codes (EN/ZH/JA/KO)
 - **Email threading** — auto-assign `thread_id` via In-Reply-To / References headers
@@ -274,12 +274,30 @@ wrangler deploy
 # → Note the Worker URL: https://mails-worker.<your-subdomain>.workers.dev
 ```
 
-### Step 4: Set up Cloudflare Email Routing
+### Step 4: Set up inbound email
+
+There are two supported ways to receive mail. Pick **one**.
+
+**Option A — Cloudflare Email Routing** (when your domain's zone is on Cloudflare):
 
 1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com) → your domain → **Email** → **Email Routing**
 2. Click **Enable Email Routing** (Cloudflare will add MX records automatically)
 3. Go to **Routing rules** → **Catch-all address** → set action to **Send to a Worker** → select your deployed Worker
-4. Now all emails to `*@example.com` will be routed to your Worker
+4. Now all emails to `*@example.com` will be routed to your Worker (handled by the Worker's `email()` handler)
+
+**Option B — Resend Inbound** (when your domain is NOT on Cloudflare, or you already use Resend for sending):
+
+1. In Resend, add your domain and verify the **Receiving MX** record it provides.
+2. Set the inbound signing secret on the Worker:
+   ```bash
+   wrangler secret put RESEND_WEBHOOK_SECRET   # the webhook's "signing secret" (whsec_...)
+   ```
+3. In Resend → **Webhooks**, create a webhook pointing at your Worker and subscribe it to `email.received` (you can subscribe delivery events too):
+   ```
+   https://<your-worker>.workers.dev/api/resend-webhook
+   ```
+   (A dedicated `POST /api/resend-inbound` endpoint also exists if you prefer a separate webhook.)
+4. Incoming mail now arrives as an `email.received` event; the Worker fetches the body + attachments from Resend, stores them in D1/R2, extracts verification codes, and fires your user webhooks — same as the Email Routing path.
 
 ### Step 5: (Optional) Create R2 bucket for large attachments
 

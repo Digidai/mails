@@ -92,3 +92,77 @@ describe('Headless Claim (POST /v1/claim/auto)', () => {
     expect(RESERVED_NAMES.has('api')).toBe(true)
   })
 })
+
+/** Mock that records every run() so we can assert what was inserted. */
+function captureDB(opts: { claimCount?: number } = {}) {
+  const runs: { sql: string; args: unknown[] }[] = []
+  const db = {
+    runs,
+    prepare: (sql: string) => ({
+      bind: (...args: unknown[]) => ({
+        first: async () => {
+          if (sql.includes('SELECT mailbox FROM auth_tokens WHERE mailbox')) return null
+          if (sql.includes('SELECT count FROM daily_claim_counts')) {
+            return opts.claimCount !== undefined ? { count: opts.claimCount } : null
+          }
+          return null
+        },
+        run: async () => { runs.push({ sql, args }); return { meta: { changes: 1 } } },
+      }),
+    }),
+  }
+  return db as unknown as D1Database & { runs: { sql: string; args: unknown[] }[] }
+}
+
+describe('Headless Claim — scope, domain, warm-up, rate limit', () => {
+  const fullAuth = { mailbox: null, scope: 'full' as const }
+
+  test('rejects a mailbox-scoped token (privilege escalation guard)', async () => {
+    const db = captureDB()
+    const res = await handleClaimAuto(
+      makeRequest({ name: 'agent2' }),
+      { DB: db } as any,
+      { mailbox: 'agent1@mail.openjobs-ai.com', scope: 'mailbox' as const },
+    )
+    expect(res.status).toBe(403)
+    // No mailbox was created.
+    expect((db as any).runs.some((r: any) => r.sql.includes('INSERT INTO auth_tokens'))).toBe(false)
+  })
+
+  test('uses MAILBOX_DOMAIN for the new mailbox address', async () => {
+    const db = captureDB()
+    const res = await handleClaimAuto(
+      makeRequest({ name: 'bot1' }),
+      { DB: db, MAILBOX_DOMAIN: 'mail.openjobs-ai.com' } as any,
+      fullAuth,
+    )
+    expect(res.status).toBe(201)
+    const data = await res.json() as { mailbox: string }
+    expect(data.mailbox).toBe('bot1@mail.openjobs-ai.com')
+  })
+
+  test('claimed mailbox is isolated (scope=mailbox) and warm-up locked ~24h', async () => {
+    const db = captureDB()
+    const before = Date.now()
+    await handleClaimAuto(makeRequest({ name: 'bot2' }), { DB: db } as any, fullAuth)
+    const insert = (db as any).runs.find((r: any) => r.sql.includes('INSERT INTO auth_tokens'))
+    expect(insert).toBeTruthy()
+    expect(insert.sql).toContain("'mailbox'")          // scope literal
+    const sendUnlocksAt = insert.args[3] as string      // 4th bound param
+    expect(typeof sendUnlocksAt).toBe('string')
+    expect(Date.parse(sendUnlocksAt)).toBeGreaterThan(before + 23 * 3600 * 1000)
+  })
+
+  test('SEND_WARMUP_HOURS=0 disables warm-up (send_unlocks_at null)', async () => {
+    const db = captureDB()
+    await handleClaimAuto(makeRequest({ name: 'bot3' }), { DB: db, SEND_WARMUP_HOURS: '0' } as any, fullAuth)
+    const insert = (db as any).runs.find((r: any) => r.sql.includes('INSERT INTO auth_tokens'))
+    expect(insert.args[3]).toBeNull()
+  })
+
+  test('enforces the daily claim limit (429)', async () => {
+    const db = captureDB({ claimCount: 6 }) // default limit is 5
+    const res = await handleClaimAuto(makeRequest({ name: 'bot4' }), { DB: db } as any, fullAuth)
+    expect(res.status).toBe(429)
+  })
+})

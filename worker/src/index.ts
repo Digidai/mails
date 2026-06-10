@@ -8,7 +8,6 @@ import { handleSend, parseFromName } from './handlers/send'
 import { handleGetAttachment } from './handlers/attachment'
 import { handleGetThreads, handleGetThread } from './handlers/threads'
 import { handleExtract } from './handlers/extract'
-import { getWebhookUrl } from './handlers/webhook'
 import { handleEvents } from './handlers/events'
 import { handleResendWebhook } from './handlers/delivery-status'
 import { handleResendInbound, ingestParsedInbound } from './handlers/inbound'
@@ -222,9 +221,20 @@ export default {
                 response = await handleMailbox(request, env, mailbox)
                 break
               case '/api/mailbox/pause':
+                // Moderation actions are operator-only: a mailbox-scoped token
+                // must not be able to pause/resume (esp. self-resume after an
+                // operator pause, which would defeat abuse enforcement).
+                if (auth.scope !== 'full') {
+                  response = Response.json({ error: 'Forbidden' }, { status: 403 })
+                  break
+                }
                 response = await handleMailboxPause(request, env, mailbox)
                 break
               case '/api/mailbox/resume':
+                if (auth.scope !== 'full') {
+                  response = Response.json({ error: 'Forbidden' }, { status: 403 })
+                  break
+                }
                 response = await handleMailboxResume(request, env, mailbox)
                 break
               case '/api/mailbox/routes':
@@ -336,7 +346,7 @@ export default {
     }
   },
   // Scheduled handler: clean up old events + raw emails (runs hourly via cron trigger)
-  async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
+  async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     // Clean up SSE events older than 24 hours
     const eventCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
     try {

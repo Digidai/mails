@@ -1,4 +1,5 @@
 import type { AuthContext, Env } from '../types'
+import { timingSafeEqual } from './resend-sig'
 
 /**
  * Resolve auth context from request.
@@ -41,7 +42,7 @@ export async function resolveAuth(request: Request, env: Env, requireTokenTable 
 
   // Legacy single AUTH_TOKEN mode (no mailbox isolation)
   if (env.AUTH_TOKEN) {
-    if (!token || token !== env.AUTH_TOKEN) return null
+    if (!token || !timingSafeEqual(token, env.AUTH_TOKEN)) return null
     return { mailbox: null, scope: 'full' }
   }
 
@@ -67,10 +68,12 @@ async function checkAuthTokensTable(env: Env): Promise<boolean> {
   try {
     await env.DB.prepare("SELECT 1 FROM auth_tokens LIMIT 0").run()
     _hasAuthTokensTable = true
+    return true
   } catch {
-    _hasAuthTokensTable = false
+    // Do NOT memoize the negative: a transient D1 error must not pin this isolate
+    // into legacy/public auth for its lifetime. Re-check on the next request.
+    return false
   }
-  return _hasAuthTokensTable
 }
 
 /** Reset the auth_tokens table cache — for testing only. */

@@ -29,9 +29,15 @@ wrangler secret put RESEND_API_KEY       # your re_... key from Resend
 wrangler deploy
 ```
 
-Then set up Cloudflare Email Routing:
+Then set up inbound — **either** Cloudflare Email Routing **or** Resend Inbound:
+
+Cloudflare Email Routing (domain on Cloudflare):
 1. Cloudflare Dashboard → your domain → **Email** → **Email Routing** → Enable
 2. **Routing rules** → **Catch-all** → **Send to a Worker** → select your Worker
+
+Resend Inbound (domain not on Cloudflare): verify the Resend Receiving MX, set
+`RESEND_WEBHOOK_SECRET`, and create a Resend webhook for `email.received` →
+`https://<your-worker>.workers.dev/api/resend-webhook`.
 
 ### Step 3: Configure the CLI
 

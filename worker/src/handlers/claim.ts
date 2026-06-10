@@ -30,6 +30,14 @@ export async function handleClaimAuto(
     return Response.json({ error: 'Method not allowed' }, { status: 405 })
   }
 
+  // Only operator/full-scope tokens may mint new mailboxes. A mailbox-scoped
+  // token is confined to its own address and must not be able to provision
+  // additional mailboxes (privilege escalation). Operators create per-agent
+  // mailboxes with a full-scope token and hand each agent its mailbox token.
+  if (auth.scope !== 'full') {
+    return Response.json({ error: 'This token is not permitted to claim mailboxes' }, { status: 403 })
+  }
+
   // Rate limit: max N claims per token per day (default 5)
   const rateLimitError = await checkDailyClaimLimit(request, env)
   if (rateLimitError) {
