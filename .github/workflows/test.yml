@@ -18,7 +18,12 @@ jobs:
         with:
           bun-version: "1.3.9"
 
-      - run: bun install
+      - name: Install CLI dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Worker dependencies
+        run: bun install --frozen-lockfile
+        working-directory: worker
 
       - name: Type check
         run: bun run typecheck
