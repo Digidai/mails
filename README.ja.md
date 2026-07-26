@@ -43,10 +43,12 @@ AIエージェント向けのメールインフラ。送信、受信、検索、
 - **ワンクリックデプロイ** — `mails deploy`でセルフホスティング全体を自動化（D1、secrets、Worker）
 - **削除API** — 処理済みメールの削除、添付ファイルとR2オブジェクトのカスケード削除
 - **ストレージプロバイダー** — ローカルSQLite（開発用）またはリモートWorker API（本番）
-- **ランタイム依存関係ゼロ** — すべてのプロバイダーがネイティブ `fetch()` を使用
+- **小さなランタイム構成** — ホスト型フローはNodeのネイティブ`fetch()`、ローカルSQLiteはBunを使用
 - **セルフホスト** — Cloudflareに独自Workerをデプロイ（無料枠で十分）、データを完全にコントロール
 
 ## インストール
+
+ホスト型CLIにはNode.js 20+、ローカルSQLiteモードにはBunが必要です。
 
 ```bash
 npm install -g mails-agent
@@ -59,21 +61,18 @@ npx mails-agent
 ## クイックスタート
 
 ```bash
-# 1. Workerをデプロイ（下記のセルフホスト完全ガイドを参照）
-cd worker && wrangler deploy
+# ブラウザ不要の安全なAgent初回セットアップ（API keyは表示しません）
+mails bootstrap
+mails inbox
+mails code --timeout 60
 
-# 2. CLIを設定
-mails config set worker_url https://your-worker.example.com
-mails config set worker_token YOUR_TOKEN
-mails config set mailbox agent@yourdomain.com
-mails config set default_from agent@yourdomain.com
-
-# 3. 使用開始
-mails send --to user@example.com --subject "Hello" --body "World"
-mails inbox                          # 受信箱を確認
-mails inbox --query "パスワード"       # メール検索
-mails code --to agent@yourdomain.com # 認証コードを待機
+# 人間の承認で永続的な名前付きメールボックスへアップグレード
+mails claim myagent
 ```
+
+`mails bootstrap` は72時間有効なランダム受信専用メールボックスを作成します。
+メールの読み取り・検索・認証コード抽出は可能ですが、送信、ドメイン/Webhook
+管理、添付ファイルのダウンロード、追加メールボックス作成はできません。
 
 ## 仕組み
 

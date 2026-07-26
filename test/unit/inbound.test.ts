@@ -1,5 +1,9 @@
 import { describe, test, expect } from 'bun:test'
-import { handleResendInbound, ingestParsedInbound } from '../../worker/src/handlers/inbound'
+import {
+  handleResendInbound,
+  ingestParsedInbound,
+  resolveInboundRecipient,
+} from '../../worker/src/handlers/inbound'
 
 /** Generate a valid Svix signature (mirrors resend-sig.ts verification). */
 async function signWebhook(secret: string, svixId: string, timestamp: string, body: string) {
@@ -21,7 +25,9 @@ function mockEnv(emailsInsertChanges = 1) {
   const db = {
     prepare: (sql: string) => ({
       bind: () => ({
-        first: async () => null,
+        first: async () => sql.includes('SELECT token, status')
+          ? { token: 'mk_test', status: 'active', expires_at: null }
+          : null,
         all: async () => ({ results: [] }),
         run: async () => ({
           meta: { changes: sql.includes('INSERT OR IGNORE INTO emails') ? emailsInsertChanges : 1 },
@@ -103,5 +109,60 @@ describe('ingestParsedInbound', () => {
   test('reports a duplicate when INSERT OR IGNORE makes no change', async () => {
     const result = await ingestParsedInbound(mockEnv(0), mockCtx(), baseInput())
     expect(result.duplicate).toBe(true)
+  })
+})
+
+describe('resolveInboundRecipient', () => {
+  test('accepts an active, unexpired mailbox', async () => {
+    const result = await resolveInboundRecipient(mockEnv(), 'BOT@EXAMPLE.COM')
+    expect(result).toEqual({ accepted: true, token: 'mk_test' })
+  })
+
+  test('rejects an unknown mailbox', async () => {
+    const env = {
+      DB: {
+        prepare: () => ({
+          bind: () => ({ first: async () => null }),
+        }),
+      },
+    } as any
+    const result = await resolveInboundRecipient(env, 'unknown@example.com')
+    expect(result.accepted).toBe(false)
+  })
+
+  test('rejects an expired provisional mailbox', async () => {
+    const env = {
+      DB: {
+        prepare: () => ({
+          bind: () => ({
+            first: async () => ({
+              token: 'mk_expired',
+              status: 'active',
+              expires_at: new Date(Date.now() - 60_000).toISOString(),
+            }),
+          }),
+        }),
+      },
+    } as any
+    const result = await resolveInboundRecipient(env, 'expired@example.com')
+    expect(result.accepted).toBe(false)
+  })
+
+  test('rejects a paused mailbox', async () => {
+    const env = {
+      DB: {
+        prepare: () => ({
+          bind: () => ({
+            first: async () => ({
+              token: 'mk_paused',
+              status: 'paused',
+              expires_at: null,
+            }),
+          }),
+        }),
+      },
+    } as any
+    const result = await resolveInboundRecipient(env, 'paused@example.com')
+    expect(result.accepted).toBe(false)
   })
 })

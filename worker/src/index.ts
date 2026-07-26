@@ -10,11 +10,24 @@ import { handleGetThreads, handleGetThread } from './handlers/threads'
 import { handleExtract } from './handlers/extract'
 import { handleEvents } from './handlers/events'
 import { handleResendWebhook } from './handlers/delivery-status'
-import { handleResendInbound, ingestParsedInbound } from './handlers/inbound'
+import {
+  handleResendInbound,
+  ingestParsedInbound,
+  resolveInboundRecipient,
+} from './handlers/inbound'
 import { handleDomains } from './handlers/domains'
 import { handleClaimAuto } from './handlers/claim'
-import { handleMailbox, handleMailboxPause, handleMailboxResume } from './handlers/mailbox'
+import { handleBootstrap } from './handlers/bootstrap'
+import {
+  deleteMailboxData,
+  handleMailbox,
+  handleMailboxPause,
+  handleMailboxResume,
+} from './handlers/mailbox'
 import { handleWebhookRoutes } from './handlers/webhook-routes'
+import { checkAuthFailureBlock, recordAuthFailure } from './handlers/auth-abuse'
+import { recordFunnelEvent } from './handlers/funnel'
+import { getClientMetadata } from './handlers/privacy'
 
 export type { Env } from './types'
 
@@ -37,6 +50,7 @@ const ROUTE_METHODS: Record<string, string[]> = {
   '/api/domains': ['GET', 'POST'],
   '/api/stats': ['GET'],
   '/api/claim/auto': ['POST'],
+  '/api/bootstrap': ['POST'],
   '/api/mailbox': ['GET', 'PATCH', 'DELETE'],
   '/api/mailbox/pause': ['PATCH'],
   '/api/mailbox/resume': ['PATCH'],
@@ -49,7 +63,15 @@ export default {
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Headers': [
+        'Content-Type',
+        'Authorization',
+        'Idempotency-Key',
+        'X-Mails-Client',
+        'X-Mails-Client-Version',
+        'X-Mails-Source',
+        'X-Mails-Flow',
+      ].join(', '),
     }
 
     if (request.method === 'OPTIONS') {
@@ -67,16 +89,32 @@ export default {
     } else if (url.pathname === '/api/resend-inbound' && request.method === 'POST') {
       // Resend Inbound (email.received) — public endpoint, verified by Resend secret
       response = await handleResendInbound(request, env, ctx)
+    } else if (url.pathname === '/v1/bootstrap') {
+      // Agent-native first run: random, expiring, receive-only mailbox.
+      response = await handleBootstrap(request, env)
     } else if (url.pathname.startsWith('/v1/') || url.pathname.startsWith('/api/')) {
       // /v1/* = hosted API (always requires auth_tokens, mailbox-scoped)
       // /api/* = self-hosted API (supports AUTH_TOKEN, public fallback)
       const isV1 = url.pathname.startsWith('/v1/')
       const route = isV1 ? url.pathname.replace('/v1/', '/api/') : url.pathname
 
-      const auth = await resolveAuth(request, env, isV1)
-      if (auth === null) {
-        response = Response.json({ error: 'Unauthorized' }, { status: 401 })
+      const authBlock = isV1
+        ? await checkAuthFailureBlock(request, env)
+        : { principalHash: null, retryAfter: null }
+      if (authBlock.retryAfter) {
+        response = Response.json(
+          { error: 'Too many invalid authentication attempts', code: 'auth_rate_limited' },
+          { status: 429, headers: { 'Retry-After': String(authBlock.retryAfter) } },
+        )
       } else {
+        const auth = await resolveAuth(request, env, isV1)
+        if (auth === null) {
+          if (isV1) ctx.waitUntil(recordAuthFailure(env, authBlock.principalHash))
+          response = Response.json(
+            { error: 'Unauthorized', code: 'invalid_or_expired_token' },
+            { status: 401 },
+          )
+        } else {
         // Check if mailbox is paused (allow mailbox management endpoints through)
         let paused = false
         const mailboxMgmtRoutes = ['/api/mailbox', '/api/mailbox/pause', '/api/mailbox/resume']
@@ -100,6 +138,19 @@ export default {
           response = Response.json(
             { error: `Method ${request.method} not allowed for ${url.pathname}. Allowed: ${allowedMethods!.join(', ')}` },
             { status: 405, headers: { 'Allow': allowedMethods!.join(', ') } }
+          )
+        } else if (
+          isV1
+          && auth.scope === 'provisional'
+          && !isProvisionalRouteAllowed(route, request.method)
+        ) {
+          response = Response.json(
+            {
+              error: 'This provisional mailbox is receive-only. Claim a permanent mailbox to unlock this capability.',
+              code: 'provisional_capability_denied',
+              upgrade: 'mails claim <name>',
+            },
+            { status: 403 },
           )
         } else if (paused) {
           response = Response.json({ error: 'Mailbox is paused' }, { status: 403 })
@@ -130,7 +181,10 @@ export default {
                 response = Response.json({
                   worker: 'mails-worker',
                   mailbox: mailbox ?? null,
-                  send: !!env.RESEND_API_KEY,
+                  scope: auth.scope,
+                  expires_at: auth.expiresAt,
+                  send: auth.scope !== 'provisional' && !!env.RESEND_API_KEY,
+                  capabilities: capabilitiesForScope(auth.scope),
                 })
                 break
               case '/api/attachment':
@@ -224,14 +278,14 @@ export default {
                 // Moderation actions are operator-only: a mailbox-scoped token
                 // must not be able to pause/resume (esp. self-resume after an
                 // operator pause, which would defeat abuse enforcement).
-                if (auth.scope !== 'full') {
+                if (auth.scope !== 'operator') {
                   response = Response.json({ error: 'Forbidden' }, { status: 403 })
                   break
                 }
                 response = await handleMailboxPause(request, env, mailbox)
                 break
               case '/api/mailbox/resume':
-                if (auth.scope !== 'full') {
+                if (auth.scope !== 'operator') {
                   response = Response.json({ error: 'Forbidden' }, { status: 403 })
                   break
                 }
@@ -257,6 +311,26 @@ export default {
             )
           }
         }
+        if (isV1 && response.ok) {
+          const metadata = getClientMetadata(request)
+          ctx.waitUntil(recordFunnelEvent(env, 'first_api_success', auth.subjectId, metadata))
+          if (route === '/api/inbox') {
+            ctx.waitUntil(recordFunnelEvent(env, 'first_inbox_read', auth.subjectId, metadata))
+          } else if (route === '/api/code') {
+            const codeResponse = response.clone()
+            ctx.waitUntil((async () => {
+              try {
+                const body = await codeResponse.json() as { code?: string | null }
+                if (body.code) {
+                  await recordFunnelEvent(env, 'first_code_retrieved', auth.subjectId, metadata)
+                }
+              } catch {
+                // Non-JSON responses are never considered successful code retrievals.
+              }
+            })())
+          }
+        }
+        }
       }
     } else {
       response = Response.json({ name: 'mails-worker' })
@@ -272,6 +346,12 @@ export default {
   async email(message: ForwardableEmailMessage, env: Env, ctx: ExecutionContext): Promise<void> {
     const to = message.to
     const from = message.from
+    const recipient = await resolveInboundRecipient(env, to)
+    if (!recipient.accepted) {
+      console.warn(`Inbound email rejected for inactive or unknown mailbox to=${to}`)
+      message.setReject('Unknown or inactive mailbox')
+      return
+    }
     const id = crypto.randomUUID()
     const now = new Date().toISOString()
     const date = now.slice(0, 10) // YYYY-MM-DD
@@ -347,6 +427,26 @@ export default {
   },
   // Scheduled handler: clean up old events + raw emails (runs hourly via cron trigger)
   async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+    // Expired provisional mailboxes are ephemeral by contract. Remove their
+    // messages, attachment blobs, routes, counters, grants, and token.
+    try {
+      const expired = await env.DB.prepare(
+        `SELECT mailbox FROM auth_tokens
+         WHERE scope = 'provisional'
+           AND expires_at IS NOT NULL
+           AND datetime(expires_at) <= datetime('now')
+         LIMIT 100`
+      ).all<{ mailbox: string }>()
+      for (const row of expired.results ?? []) {
+        await deleteMailboxData(env, row.mailbox)
+      }
+      if ((expired.results ?? []).length > 0) {
+        console.log(`Provisional cleanup: deleted ${(expired.results ?? []).length} expired mailboxes`)
+      }
+    } catch (error) {
+      console.error('Provisional mailbox cleanup failed:', error)
+    }
+
     // Clean up SSE events older than 24 hours
     const eventCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
     try {
@@ -354,6 +454,51 @@ export default {
       console.log(`Events cleanup: deleted ${result.meta.changes ?? 0} events older than ${eventCutoff}`)
     } catch (err) {
       console.error('Events cleanup failed:', err)
+    }
+
+    // Funnel data is aggregate product telemetry with no raw addresses, IPs, or
+    // tokens. Keep a bounded 180-day window.
+    const funnelCutoff = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString()
+    try {
+      await env.DB.prepare('DELETE FROM funnel_events WHERE created_at < ?').bind(funnelCutoff).run()
+    } catch (err) {
+      console.error('Funnel cleanup failed:', err)
+    }
+
+    // Authentication abuse buckets are useful only for recent throttling.
+    const authBucketCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    try {
+      await env.DB.prepare('DELETE FROM auth_failure_buckets WHERE last_seen_at < ?').bind(authBucketCutoff).run()
+    } catch (err) {
+      console.error('Auth failure bucket cleanup failed:', err)
+    }
+
+    // Grant rows enforce daily quotas even after a mailbox is deleted. Scrub
+    // expired replay tokens promptly, then remove old quota/grant ledgers.
+    const grantLedgerCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    const quotaDateCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10)
+    try {
+      await env.DB.prepare(
+        "UPDATE bootstrap_grants SET token = '' WHERE token != '' AND datetime(expires_at) <= datetime('now')"
+      ).run()
+      await env.DB.prepare('DELETE FROM bootstrap_grants WHERE expires_at < ?').bind(grantLedgerCutoff).run()
+      await env.DB.prepare('DELETE FROM bootstrap_quota_buckets WHERE bucket_date < ?').bind(quotaDateCutoff).run()
+    } catch (err) {
+      console.error('Bootstrap ledger cleanup failed:', err)
+    }
+
+    // Claim sessions need short-lived replay state and abuse evidence, not
+    // indefinite duplicate credentials or network metadata.
+    const claimSessionCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    try {
+      await env.DB.prepare(
+        "UPDATE claim_sessions SET api_key = NULL WHERE api_key IS NOT NULL AND datetime(expires_at) <= datetime('now')"
+      ).run()
+      await env.DB.prepare('DELETE FROM claim_sessions WHERE created_at < ?').bind(claimSessionCutoff).run()
+    } catch (err) {
+      console.error('Claim session cleanup failed:', err)
     }
 
     // Clean up raw email blobs older than 30 days (only for successfully parsed emails)
@@ -409,6 +554,34 @@ async function handleHealth(env: Env): Promise<Response> {
     },
     { status: healthy ? 200 : 503 }
   )
+}
+
+export function isProvisionalRouteAllowed(route: string, method: string): boolean {
+  if (method === 'DELETE' && route === '/api/mailbox') return true
+  if (method === 'GET') {
+    return new Set([
+      '/api/inbox',
+      '/api/code',
+      '/api/email',
+      '/api/me',
+      '/api/threads',
+      '/api/thread',
+      '/api/search',
+      '/api/stats',
+      '/api/events',
+      '/api/mailbox',
+    ]).has(route)
+  }
+  return method === 'POST' && route === '/api/extract'
+}
+
+function capabilitiesForScope(scope: 'operator' | 'mailbox' | 'provisional'): string[] {
+  const receive = ['inbox.read', 'email.read', 'code.read', 'search.read', 'threads.read']
+  if (scope === 'provisional') return receive
+  const mailbox = [...receive, 'email.send', 'attachment.read', 'webhook.manage', 'domain.manage']
+  return scope === 'operator'
+    ? [...mailbox, 'mailbox.provision', 'mailbox.moderate']
+    : mailbox
 }
 
 /**

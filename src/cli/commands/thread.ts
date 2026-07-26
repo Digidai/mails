@@ -1,4 +1,5 @@
 import { loadConfig } from '../../core/config.js'
+import { clientHeaders } from '../../core/client.js'
 
 function getApiDetails(config: ReturnType<typeof loadConfig>) {
   const apiUrl = process.env.MAILS_API_URL || config.worker_url || 'https://api.mails0.com'
@@ -16,7 +17,7 @@ export async function threadCommand(args: string[]) {
     process.exit(1)
   }
 
-  const headers: Record<string, string> = {}
+  const headers: Record<string, string> = clientHeaders('thread')
   if (token) headers['Authorization'] = `Bearer ${token}`
 
   const subcommand = args[0]

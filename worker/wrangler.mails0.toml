@@ -1,0 +1,49 @@
+name = "mails-worker"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+account_id = "48d9ccaf5ee7914c803b5d0656462848"
+
+# Production custom domain for the hosted mails0 API.
+routes = [
+  { pattern = "api.mails0.com", custom_domain = true }
+]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "mails"
+database_id = "300b8760-fc02-4b1d-b0c1-bb560ec3b65e"
+
+[[r2_buckets]]
+binding = "ATTACHMENTS"
+bucket_name = "mails-attachments"
+
+[ai]
+binding = "AI"
+
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "mails-embeddings"
+
+[triggers]
+crons = ["0 * * * *"]
+
+[[services]]
+binding = "MAILS_GTM_WORKER"
+service = "mails-gtm-agent"
+
+[vars]
+MAILBOX_DOMAIN = "mails0.com"
+BOOTSTRAP_ENABLED = "true"
+BOOTSTRAP_ALLOWED_ORIGINS = "https://mails0.com,https://www.mails0.com"
+PROVISIONAL_TTL_HOURS = "72"
+BOOTSTRAP_IP_DAILY_LIMIT = "1"
+BOOTSTRAP_GLOBAL_DAILY_LIMIT = "100"
+AUTH_FAILURE_LIMIT_PER_HOUR = "12"
+AUTH_FAILURE_BLOCK_MINUTES = "60"
+SEND_WARMUP_HOURS = "24"
+
+# Secrets are managed in Cloudflare and must never be committed:
+#   ABUSE_HASH_SECRET
+#   RESEND_API_KEY
+#   WEBHOOK_SECRET
+#   RESEND_WEBHOOK_SECRET

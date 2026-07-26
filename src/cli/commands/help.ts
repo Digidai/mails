@@ -6,6 +6,7 @@ Usage:
   mails <command> [options]
 
 Commands:
+  bootstrap     Create a random 72-hour receive-only mailbox without a browser
   claim         Claim a @mails0.com mailbox for your agent
   send          Send an email
   inbox         List received emails
@@ -17,10 +18,15 @@ Commands:
   version       Show version
 
 Claim:
-  mails claim <name>                    Claim name@mails0.com (max 10 per user)
+  mails claim <name>                    Claim permanent name@mails0.com
                                         Opens browser for human approval.
                                         In headless mode, shows a URL
                                         for the human to confirm.
+
+Bootstrap:
+  mails bootstrap                       Automatic agent-safe first run.
+                                        Creates an expiring receive-only mailbox.
+                                        Use mails claim <name> to upgrade.
 
 Send:
   mails send --to <email> --subject <subject> --body <text>

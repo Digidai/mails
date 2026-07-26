@@ -90,9 +90,8 @@ export async function inboxCommand(args: string[]) {
     if (query) {
       console.log(`No emails found for query: ${query}`)
     } else {
-      console.log('No emails yet. Try:')
-      console.log(`  mails send --to ${mailbox} --subject "Test" --body "Hello"`)
-      console.log('  mails demo')
+      console.log('No emails yet.')
+      console.log(`Send a test email from another account to ${mailbox}, then run mails inbox again.`)
     }
     return
   }

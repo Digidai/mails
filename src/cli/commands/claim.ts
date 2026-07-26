@@ -1,4 +1,5 @@
-import { setConfigValue } from '../../core/config.js'
+import { updateConfig } from '../../core/config.js'
+import { clientHeaders } from '../../core/client.js'
 
 const API_BASE = process.env.MAILS_CLAIM_URL || 'https://mails0.com'
 const CLAIM_PAGE = process.env.MAILS_CLAIM_PAGE || process.env.MAILS_CLAIM_URL || 'https://mails0.com'
@@ -18,7 +19,10 @@ export async function claimCommand(args: string[]) {
   try {
     startRes = await fetch(`${API_BASE}/v1/claim/start`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...clientHeaders('human-claim'),
+      },
       body: JSON.stringify({ name }),
     })
   } catch (err) {
@@ -76,7 +80,9 @@ export async function claimCommand(args: string[]) {
 
     let pollRes: Response
     try {
-      pollRes = await fetch(`${API_BASE}/v1/claim/poll?session=${session_id}`)
+      pollRes = await fetch(`${API_BASE}/v1/claim/poll?session=${session_id}`, {
+        headers: clientHeaders('human-claim'),
+      })
     } catch {
       // Network error during poll — retry silently
       continue
@@ -91,18 +97,27 @@ export async function claimCommand(args: string[]) {
       process.stdout.write('\n')
       console.log('')
 
-      setConfigValue('mailbox', pollData.mailbox!)
-      setConfigValue('api_key', pollData.api_key!)
-      setConfigValue('default_from', pollData.mailbox!)
+      updateConfig({
+        mode: 'hosted',
+        domain: 'mails0.com',
+        mailbox: pollData.mailbox!,
+        api_key: pollData.api_key!,
+        default_from: pollData.mailbox!,
+        worker_url: 'https://api.mails0.com',
+        storage_provider: 'remote',
+        token_scope: 'mailbox',
+        token_expires_at: undefined,
+        bootstrap_idempotency_key: undefined,
+      })
 
       console.log(`  ✓ Claimed: ${pollData.mailbox}`)
-      console.log(`  ✓ API Key: ${pollData.api_key!.slice(0, 8)}...`)
+      console.log('  ✓ API key saved securely (not printed)')
       console.log(`  ✓ Saved to ~/.mails/config.json`)
       console.log('')
       console.log('  Try it now:')
-      console.log(`    mails send --to ${pollData.mailbox} --subject "Test" --body "Hello from my agent"`)
       console.log(`    mails inbox`)
       console.log(`    mails code --to ${pollData.mailbox} --timeout 30`)
+      console.log('    # Outbound sending unlocks after the new-mailbox warm-up period.')
       console.log('')
       console.log('  Docs: https://github.com/Digidai/mails')
       return

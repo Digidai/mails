@@ -32,7 +32,7 @@ function makeRequest(body: Record<string, unknown>) {
 
 describe('Headless Claim (POST /v1/claim/auto)', () => {
   test('creates mailbox successfully', async () => {
-    const auth = { mailbox: 'existing@mails0.com', scope: 'full' as const }
+    const auth = { mailbox: 'existing@mails0.com', scope: 'operator' as const }
     const res = await handleClaimAuto(makeRequest({ name: 'newagent' }), mockEnv(), auth)
 
     expect(res.status).toBe(201)
@@ -42,13 +42,13 @@ describe('Headless Claim (POST /v1/claim/auto)', () => {
   })
 
   test('rejects missing name', async () => {
-    const auth = { mailbox: 'a@mails0.com', scope: 'full' as const }
+    const auth = { mailbox: 'a@mails0.com', scope: 'operator' as const }
     const res = await handleClaimAuto(makeRequest({}), mockEnv(), auth)
     expect(res.status).toBe(400)
   })
 
   test('rejects reserved names', async () => {
-    const auth = { mailbox: 'a@mails0.com', scope: 'full' as const }
+    const auth = { mailbox: 'a@mails0.com', scope: 'operator' as const }
     const res = await handleClaimAuto(makeRequest({ name: 'admin' }), mockEnv(), auth)
     expect(res.status).toBe(400)
     const data = await res.json() as { error: string }
@@ -56,7 +56,7 @@ describe('Headless Claim (POST /v1/claim/auto)', () => {
   })
 
   test('rejects invalid name format', async () => {
-    const auth = { mailbox: 'a@mails0.com', scope: 'full' as const }
+    const auth = { mailbox: 'a@mails0.com', scope: 'operator' as const }
 
     const res2 = await handleClaimAuto(makeRequest({ name: 'has spaces' }), mockEnv(), auth)
     expect(res2.status).toBe(400)
@@ -69,14 +69,14 @@ describe('Headless Claim (POST /v1/claim/auto)', () => {
   })
 
   test('rejects duplicate mailbox', async () => {
-    const auth = { mailbox: 'a@mails0.com', scope: 'full' as const }
+    const auth = { mailbox: 'a@mails0.com', scope: 'operator' as const }
     const db = mockDB(['taken@mails0.com'])
     const res = await handleClaimAuto(makeRequest({ name: 'taken' }), mockEnv(db), auth)
     expect(res.status).toBe(409)
   })
 
   test('rejects non-POST method', async () => {
-    const auth = { mailbox: 'a@mails0.com', scope: 'full' as const }
+    const auth = { mailbox: 'a@mails0.com', scope: 'operator' as const }
     const req = new Request('http://localhost/v1/claim/auto', { method: 'GET' })
     const res = await handleClaimAuto(req, mockEnv(), auth)
     expect(res.status).toBe(405)
@@ -115,7 +115,7 @@ function captureDB(opts: { claimCount?: number } = {}) {
 }
 
 describe('Headless Claim — scope, domain, warm-up, rate limit', () => {
-  const fullAuth = { mailbox: null, scope: 'full' as const }
+  const operatorAuth = { mailbox: null, scope: 'operator' as const }
 
   test('rejects a mailbox-scoped token (privilege escalation guard)', async () => {
     const db = captureDB()
@@ -134,7 +134,7 @@ describe('Headless Claim — scope, domain, warm-up, rate limit', () => {
     const res = await handleClaimAuto(
       makeRequest({ name: 'bot1' }),
       { DB: db, MAILBOX_DOMAIN: 'mail.openjobs-ai.com' } as any,
-      fullAuth,
+      operatorAuth,
     )
     expect(res.status).toBe(201)
     const data = await res.json() as { mailbox: string }
@@ -144,7 +144,7 @@ describe('Headless Claim — scope, domain, warm-up, rate limit', () => {
   test('claimed mailbox is isolated (scope=mailbox) and warm-up locked ~24h', async () => {
     const db = captureDB()
     const before = Date.now()
-    await handleClaimAuto(makeRequest({ name: 'bot2' }), { DB: db } as any, fullAuth)
+    await handleClaimAuto(makeRequest({ name: 'bot2' }), { DB: db } as any, operatorAuth)
     const insert = (db as any).runs.find((r: any) => r.sql.includes('INSERT INTO auth_tokens'))
     expect(insert).toBeTruthy()
     expect(insert.sql).toContain("'mailbox'")          // scope literal
@@ -155,14 +155,14 @@ describe('Headless Claim — scope, domain, warm-up, rate limit', () => {
 
   test('SEND_WARMUP_HOURS=0 disables warm-up (send_unlocks_at null)', async () => {
     const db = captureDB()
-    await handleClaimAuto(makeRequest({ name: 'bot3' }), { DB: db, SEND_WARMUP_HOURS: '0' } as any, fullAuth)
+    await handleClaimAuto(makeRequest({ name: 'bot3' }), { DB: db, SEND_WARMUP_HOURS: '0' } as any, operatorAuth)
     const insert = (db as any).runs.find((r: any) => r.sql.includes('INSERT INTO auth_tokens'))
     expect(insert.args[3]).toBeNull()
   })
 
   test('enforces the daily claim limit (429)', async () => {
     const db = captureDB({ claimCount: 6 }) // default limit is 5
-    const res = await handleClaimAuto(makeRequest({ name: 'bot4' }), { DB: db } as any, fullAuth)
+    const res = await handleClaimAuto(makeRequest({ name: 'bot4' }), { DB: db } as any, operatorAuth)
     expect(res.status).toBe(429)
   })
 })

@@ -37,7 +37,7 @@ describe('Scoped Auth', () => {
     expect(auth!.scope).toBe('mailbox')
   })
 
-  test('resolveAuth returns full scope for non-scoped keys', async () => {
+  test('resolveAuth treats legacy non-scoped keys as mailbox-only', async () => {
     const { resolveAuth, _resetAuthCache } = await import('../../worker/src/handlers/auth')
     _resetAuthCache()
 
@@ -64,7 +64,56 @@ describe('Scoped Auth', () => {
 
     const auth = await resolveAuth(request, env, true)
     expect(auth).not.toBeNull()
-    expect(auth!.scope).toBe('full')
+    expect(auth!.scope).toBe('mailbox')
+  })
+
+  test('resolveAuth grants operator rights only for an explicit operator scope', async () => {
+    const { resolveAuth, _resetAuthCache } = await import('../../worker/src/handlers/auth')
+    _resetAuthCache()
+    const env = {
+      ABUSE_HASH_SECRET: 'test-secret',
+      DB: {
+        prepare: (sql: string) => ({
+          run: async () => ({}),
+          bind: () => ({
+            first: async () => sql.includes('SELECT mailbox')
+              ? { mailbox: 'ops@mails0.com', scope: 'operator', expires_at: null }
+              : null,
+            run: async () => ({}),
+          }),
+        }),
+      },
+    } as any
+    const auth = await resolveAuth(new Request('http://localhost/v1/me', {
+      headers: { Authorization: 'Bearer operator-token' },
+    }), env, true)
+    expect(auth?.scope).toBe('operator')
+  })
+
+  test('resolveAuth rejects an expired token', async () => {
+    const { resolveAuth, _resetAuthCache } = await import('../../worker/src/handlers/auth')
+    _resetAuthCache()
+    const env = {
+      DB: {
+        prepare: (sql: string) => ({
+          run: async () => ({}),
+          bind: () => ({
+            first: async () => sql.includes('SELECT mailbox')
+              ? {
+                  mailbox: 'expired@mails0.com',
+                  scope: 'provisional',
+                  expires_at: new Date(Date.now() - 60_000).toISOString(),
+                }
+              : null,
+            run: async () => ({}),
+          }),
+        }),
+      },
+    } as any
+    const auth = await resolveAuth(new Request('http://localhost/v1/me', {
+      headers: { Authorization: 'Bearer expired-token' },
+    }), env, true)
+    expect(auth).toBeNull()
   })
 
   test('resolveAuth returns null for missing token', async () => {

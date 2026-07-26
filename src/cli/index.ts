@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import { sendCommand } from './commands/send.js'
 import { inboxCommand } from './commands/inbox.js'
 import { codeCommand } from './commands/code.js'
@@ -11,6 +11,8 @@ import { helpCommand } from './commands/help.js'
 import { threadCommand } from './commands/thread.js'
 import { webhookCommand } from './commands/webhook.js'
 import { deployCommand } from './commands/deploy.js'
+import { bootstrapCommand } from './commands/bootstrap.js'
+import { VERSION } from '../version.js'
 
 const args = process.argv.slice(2)
 const command = args[0]
@@ -28,6 +30,9 @@ async function main() {
       break
     case 'claim':
       await claimCommand(args.slice(1))
+      break
+    case 'bootstrap':
+      await bootstrapCommand()
       break
     case 'config':
       await configCommand(args.slice(1))
@@ -59,7 +64,7 @@ async function main() {
     case 'version':
     case '--version':
     case '-v':
-      console.log('mails v1.9.1')
+      console.log(`mails v${VERSION}`)
       break
     default:
       console.error(`Unknown command: ${command}`)

@@ -43,10 +43,12 @@
 - **一键部署** — `mails deploy` 自动化整个自部署流程（D1、secrets、Worker）
 - **删除 API** — 删除已处理邮件，级联清理附件和 R2 对象
 - **存储 Provider** — 本地 SQLite（开发用）或远程 Worker API（生产环境）
-- **零运行时依赖** — 所有 Provider 使用原生 `fetch()`
+- **精简运行时** — 托管模式使用 Node 原生 `fetch()`；本地 SQLite 模式使用 Bun
 - **自部署** — 在 Cloudflare 部署你自己的 Worker（免费额度足够），完全掌控数据
 
 ## 安装
+
+托管 CLI 需要 Node.js 20+；本地 SQLite 模式需要 Bun。
 
 ```bash
 npm install -g mails-agent
@@ -59,21 +61,18 @@ npx mails-agent
 ## 快速开始
 
 ```bash
-# 1. 部署你的 Worker（参见下方完整自部署指南）
-cd worker && wrangler deploy
+# Agent 可自动完成的安全首次启动：不打开浏览器，也不打印 API key
+mails bootstrap
+mails inbox
+mails code --timeout 60
 
-# 2. 配置 CLI
-mails config set worker_url https://your-worker.example.com
-mails config set worker_token YOUR_TOKEN
-mails config set mailbox agent@yourdomain.com
-mails config set default_from agent@yourdomain.com
-
-# 3. 开始使用
-mails send --to user@example.com --subject "Hello" --body "World"
-mails inbox                          # 查看收件箱
-mails inbox --query "密码"            # 搜索邮件
-mails code --to agent@yourdomain.com # 等待验证码
+# 经人工确认升级为永久命名邮箱
+mails claim myagent
 ```
+
+`mails bootstrap` 会创建一个 72 小时有效的随机只收件邮箱。它可以读取、搜索
+邮件和提取验证码，但不能发送邮件、管理域名/Webhook、下载附件或继续创建邮箱。
+需要生产控制和发件能力时，请使用下方自部署指南。
 
 ## 工作原理
 

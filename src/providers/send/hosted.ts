@@ -1,4 +1,5 @@
 import type { SendProvider, SendResult } from '../../core/types.js'
+import { clientHeaders } from '../../core/client.js'
 
 const DEFAULT_API_URL = 'https://api.mails0.com'
 
@@ -39,6 +40,7 @@ export function createHostedSendProvider(apiKey: string, apiUrl?: string): SendP
           headers: {
             'Authorization': `Bearer ${apiKey}`,
             'Content-Type': 'application/json',
+            ...clientHeaders('send'),
           },
           body: JSON.stringify(body),
         })

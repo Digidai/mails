@@ -7,6 +7,8 @@ import { extractCode } from '../extract-code'
 import { resolveThreadId } from '../threading'
 import { detectLabels } from '../auto-label'
 import { recordEvent } from './events'
+import { recordFunnelEvent } from './funnel'
+import { tokenSubjectId } from './privacy'
 import { fireWebhookWithRetry } from './webhook'
 import { generateAndStoreEmbedding } from '../embeddings'
 import { parseFromName } from './send'
@@ -47,6 +49,57 @@ export interface InboundIngestInput {
   source: 'cf-email' | 'resend-inbound'
 }
 
+type InboundRecipient = {
+  accepted: boolean
+  token: string | null
+}
+
+/**
+ * Catch-all email routing must not become unbounded storage. Accept inbound
+ * mail only for an active, unexpired mailbox that has an authentication token.
+ */
+export async function resolveInboundRecipient(env: Env, mailbox: string): Promise<InboundRecipient> {
+  const normalized = mailbox.trim().toLowerCase()
+  if (!normalized) return { accepted: false, token: null }
+
+  try {
+    const row = await env.DB.prepare(
+      `SELECT token, status, expires_at
+       FROM auth_tokens
+       WHERE lower(mailbox) = ?
+       LIMIT 1`
+    ).bind(normalized).first<{
+      token: string
+      status: string | null
+      expires_at: string | null
+    }>()
+    if (!row || row.status === 'paused') return { accepted: false, token: null }
+    if (row.expires_at) {
+      const expiresAt = Date.parse(row.expires_at)
+      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+        return { accepted: false, token: null }
+      }
+    }
+    return { accepted: true, token: row.token }
+  } catch (error) {
+    // Pre-expiry schemas remain supported, but an unknown mailbox or a D1
+    // failure still fails closed.
+    try {
+      const row = await env.DB.prepare(
+        'SELECT token, status FROM auth_tokens WHERE lower(mailbox) = ? LIMIT 1'
+      ).bind(normalized).first<{ token: string; status: string | null }>()
+      if (!row || row.status === 'paused') return { accepted: false, token: null }
+      return { accepted: true, token: row.token }
+    } catch {
+      console.error(
+        '[inbound] recipient authorization failed:',
+        error instanceof Error ? error.message : String(error),
+      )
+      return { accepted: false, token: null }
+    }
+  }
+}
+
 /**
  * Persist a parsed inbound email and fire all downstream side effects
  * (auto-labels, SSE event, user webhook, embedding, activation funnel).
@@ -65,6 +118,10 @@ export async function ingestParsedInbound(
 ): Promise<{ duplicate: boolean }> {
   const now = new Date().toISOString()
   const { id, mailbox, realFrom, fromName } = input
+  const recipient = await resolveInboundRecipient(env, mailbox)
+  if (!recipient.accepted || !recipient.token) {
+    throw new Error('Mailbox is not active or has expired')
+  }
   const subject = input.subject || ''
   const code = extractCode(`${subject} ${input.bodyText}`)
 
@@ -196,14 +253,21 @@ export async function ingestParsedInbound(
   }
   ctx.waitUntil(recordEvent(env, 'message.received', mailbox, eventPayload))
 
-  // Activation funnel: first email ever received for this mailbox?
+  // Durable activation funnel. Token subjects are one-way identifiers derived
+  // from a high-entropy secret; no sender, subject, body, address, or raw token
+  // is copied into analytics.
   ctx.waitUntil((async () => {
     try {
       const prior = await env.DB.prepare(
         'SELECT id FROM emails WHERE mailbox = ? AND id != ? LIMIT 1'
       ).bind(mailbox, id).first()
       if (!prior) {
-        await recordEvent(env, 'activation.first_received', mailbox, { email_id: id, from: realFrom })
+        const anonymousId = await tokenSubjectId(recipient.token!, env)
+        await recordFunnelEvent(env, 'first_email_received', anonymousId, {
+          source: input.source,
+          clientName: 'inbound-worker',
+          flow: 'inbound',
+        })
       }
     } catch { /* non-critical */ }
   })())
@@ -458,6 +522,11 @@ export async function processResendInboundEvent(
       console.error(`Failed to record missing-recipient ingest_log for ${emailId}:`, logErr)
     }
     return Response.json({ error: 'Missing recipient', email_id: emailId }, { status: 200 })
+  }
+  const recipient = await resolveInboundRecipient(env, mailbox)
+  if (!recipient.accepted) {
+    console.warn(`Resend inbound ignored for inactive or unknown mailbox id=${emailId}`)
+    return Response.json({ ok: true, ignored: 'inactive_or_unknown_mailbox' })
   }
   const realFrom = bareAddress(fromRaw)
   const headers = normalizeHeaders(full.headers)

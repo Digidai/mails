@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.10.0] - 2026-07-26
+
+### Added
+- `mails bootstrap` creates a random 72-hour receive-only mailbox without a
+  browser, stores its API key locally with `0600` permissions, and immediately
+  verifies the inbox path.
+- Durable, privacy-preserving activation events distinguish bootstrap, first
+  authenticated API success, first inbox read, first received email, and first
+  verification-code retrieval.
+- Client/version headers on hosted CLI and SDK requests.
+
+### Security
+- Replaced the historical implicit `full` scope with explicit `operator`,
+  `mailbox`, and expiring `provisional` scopes.
+- Legacy/null D1 scopes now resolve to `mailbox`; operator privileges must be
+  granted explicitly.
+- Provisional tokens cannot send, download attachments, manage domains or
+  webhooks, moderate mailboxes, or create child mailboxes.
+- Added HMACed per-network bootstrap limits, idempotent grants, token expiry,
+  and throttling for repeated invalid authentication attempts.
+
+### Fixed
+- Hosted claims now save `https://api.mails0.com` explicitly, avoiding the
+  retired `mails-worker.genedai.workers.dev` endpoint in older installs.
+- New-mailbox guidance tests receive/code workflows first instead of suggesting
+  outbound sending during the warm-up period.
+
 ## [1.9.1] - 2026-04-11
 
 Comprehensive bug fixes from agent team QA. Three AI agents (OpenAI Codex,

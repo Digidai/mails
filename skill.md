@@ -14,41 +14,28 @@ npm install -g mails-agent
 
 Verify: `mails version` should print a version number.
 
-### Step 2: Deploy your Worker
+### Step 2: Create a temporary receive-only mailbox
 
-You need a Cloudflare Worker to receive and send emails. This requires: a domain on Cloudflare + a Resend account.
-
-```bash
-cd worker
-bun install
-wrangler d1 create mails
-# Edit wrangler.toml — paste the database_id from the output above
-wrangler d1 execute mails --file=schema.sql
-wrangler secret put AUTH_TOKEN           # strong random token for API auth
-wrangler secret put RESEND_API_KEY       # your re_... key from Resend
-wrangler deploy
-```
-
-Then set up inbound — **either** Cloudflare Email Routing **or** Resend Inbound:
-
-Cloudflare Email Routing (domain on Cloudflare):
-1. Cloudflare Dashboard → your domain → **Email** → **Email Routing** → Enable
-2. **Routing rules** → **Catch-all** → **Send to a Worker** → select your Worker
-
-Resend Inbound (domain not on Cloudflare): verify the Resend Receiving MX, set
-`RESEND_WEBHOOK_SECRET`, and create a Resend webhook for `email.received` →
-`https://<your-worker>.workers.dev/api/resend-webhook`.
-
-### Step 3: Configure the CLI
+For an automatic first run, create a random mailbox without opening a browser:
 
 ```bash
-mails config set worker_url https://mails-worker.your-subdomain.workers.dev
-mails config set worker_token YOUR_AUTH_TOKEN
-mails config set mailbox agent@yourdomain.com
-mails config set default_from agent@yourdomain.com
+mails bootstrap
 ```
 
-Verify: `mails config` should show all four values.
+This stores the API key locally without printing it. The mailbox expires after
+72 hours and supports receive, read, search, and verification-code extraction
+only. It cannot send email or create additional mailboxes.
+
+### Step 3: Verify the temporary mailbox
+
+```bash
+mails doctor
+mails inbox
+```
+
+To keep a named mailbox, run `mails claim <name>` and complete the browser
+approval. For production domains, outbound email, and full data control, follow
+the self-hosting guide in the repository README.
 
 ### Step 4: Test receiving — check your inbox
 
@@ -60,15 +47,7 @@ mails inbox
 
 Expected: `No emails found.` (empty inbox is normal for a new mailbox).
 
-### Step 5: Send an email
-
-```bash
-mails send --to user@example.com --subject "Hello" --body "World"
-```
-
-Verify: `Sent via worker (id: ...)` confirms the email was sent. The sender address is your configured `default_from`.
-
-### Step 6: Test search and verification code
+### Step 5: Test search and verification code
 
 Search your inbox:
 
@@ -79,7 +58,7 @@ mails inbox --query "test"
 Wait for a verification code:
 
 ```bash
-mails code --to agent@yourdomain.com --timeout 30
+mails code --timeout 30
 ```
 
 This long-polls for up to 30 seconds. When an email with a verification code arrives, it prints the code to stdout. If no code arrives, it exits with code 1.
@@ -87,9 +66,9 @@ This long-polls for up to 30 seconds. When an email with a verification code arr
 ### Onboarding complete
 
 You now have:
-- `~/.mails/config.json` with your worker_url, worker_token, mailbox, and default_from
-- A working email address on your own domain that receives emails
-- The ability to send and search emails
+- `~/.mails/config.json` with a hosted API key, mailbox, expiry, and API URL
+- A working temporary `@mails0.com` address that receives emails
+- The ability to receive, search, and extract verification codes
 
 ---
 
@@ -97,6 +76,7 @@ You now have:
 
 ```
 mails send                Send an email (with optional attachments)
+mails bootstrap           Create an expiring receive-only mailbox automatically
 mails inbox               List or search received emails
 mails code                Wait for a verification code
 mails config              View or modify configuration

@@ -1,4 +1,5 @@
 import { loadConfig } from '../../core/config.js'
+import { clientHeaders } from '../../core/client.js'
 
 export async function statsCommand() {
   const config = loadConfig()
@@ -13,7 +14,7 @@ export async function statsCommand() {
   const isV1 = !!config.api_key
   const path = isV1 ? '/v1/stats' : '/api/stats'
 
-  const headers: Record<string, string> = {}
+  const headers: Record<string, string> = clientHeaders('stats')
   if (token) headers['Authorization'] = `Bearer ${token}`
 
   let res: Response

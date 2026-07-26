@@ -34,7 +34,7 @@ export async function handleClaimAuto(
   // token is confined to its own address and must not be able to provision
   // additional mailboxes (privilege escalation). Operators create per-agent
   // mailboxes with a full-scope token and hand each agent its mailbox token.
-  if (auth.scope !== 'full') {
+  if (auth.scope !== 'operator') {
     return Response.json({ error: 'This token is not permitted to claim mailboxes' }, { status: 403 })
   }
 

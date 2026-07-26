@@ -1,6 +1,5 @@
 import type { StorageProvider } from './types.js'
 import { loadConfig, resolveApiKey } from './config.js'
-import { createSqliteProvider } from '../providers/storage/sqlite.js'
 import { createRemoteProvider } from '../providers/storage/remote.js'
 
 let _provider: StorageProvider | null = null
@@ -19,12 +18,28 @@ export async function getStorage(): Promise<StorageProvider> {
   if (config.api_key || config.worker_url || config.storage_provider === 'remote') {
     _provider = await resolveRemoteProvider(config)
   } else {
-    _provider = createSqliteProvider()
+    _provider = await resolveSqliteProvider()
   }
 
   await _provider.init()
   _providerKey = providerKey
   return _provider
+}
+
+async function resolveSqliteProvider(): Promise<StorageProvider> {
+  const specifier = import.meta.url.includes('/dist/')
+    ? './sqlite.js'
+    : '../providers/storage/sqlite.js'
+  try {
+    const moduleUrl = new URL(specifier, import.meta.url).href
+    const { createSqliteProvider } = await import(moduleUrl)
+    return createSqliteProvider()
+  } catch (error) {
+    throw new Error(
+      'Local SQLite mode requires Bun. Run "mails bootstrap" for the hosted Node.js flow, '
+      + `or install Bun for local mode. ${error instanceof Error ? error.message : error}`,
+    )
+  }
 }
 
 export async function resetStorage(): Promise<void> {

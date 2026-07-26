@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import type { MailsConfig } from './types.js'
+import { clientHeaders } from './client.js'
 
 const CONFIG_DIR = join(homedir(), '.mails')
 const CONFIG_FILE = join(CONFIG_DIR, 'config.json')
@@ -15,7 +16,8 @@ const DEFAULT_CONFIG: MailsConfig = {
 }
 
 function ensureDir() {
-  mkdirSync(CONFIG_DIR, { recursive: true })
+  mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 })
+  chmodSync(CONFIG_DIR, 0o700)
 }
 
 export function loadConfig(): MailsConfig {
@@ -29,7 +31,8 @@ export function loadConfig(): MailsConfig {
 
 export function saveConfig(config: MailsConfig) {
   ensureDir()
-  writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2) + '\n')
+  writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2) + '\n', { mode: 0o600 })
+  chmodSync(CONFIG_FILE, 0o600)
 }
 
 export function getConfigValue(key: string): string | undefined {
@@ -43,6 +46,10 @@ export function setConfigValue(key: string, value: string) {
   saveConfig(config as unknown as MailsConfig)
 }
 
+export function updateConfig(values: Partial<MailsConfig>) {
+  saveConfig({ ...loadConfig(), ...values })
+}
+
 /**
  * Resolve mailbox + default_from from /v1/me given an api_key.
  * Saves to config if successful.
@@ -51,7 +58,10 @@ export async function resolveApiKey(apiKey: string): Promise<string | null> {
   const apiUrl = process.env.MAILS_API_URL || 'https://api.mails0.com'
   try {
     const res = await fetch(`${apiUrl}/v1/me`, {
-      headers: { 'Authorization': `Bearer ${apiKey}` },
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        ...clientHeaders('resolve-config'),
+      },
     })
     if (!res.ok) return null
     const data = await res.json() as { mailbox?: string }

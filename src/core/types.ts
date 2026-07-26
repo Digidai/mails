@@ -121,6 +121,9 @@ export interface MailsConfig {
   worker_token?: string
   default_from?: string
   api_key?: string
+  token_scope?: 'operator' | 'mailbox' | 'provisional'
+  token_expires_at?: string
+  bootstrap_idempotency_key?: string
 }
 
 export interface SendProvider {

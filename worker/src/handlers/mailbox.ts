@@ -76,45 +76,13 @@ export async function handleMailbox(
   }
 
   if (request.method === 'DELETE') {
-    // Clean up R2 blobs before deleting D1 rows (best-effort, don't block on R2 failures)
-    let r2Deleted = 0
-    if (env.ATTACHMENTS) {
-      try {
-        // Delete raw email blobs
-        const rawKeys = await env.DB.prepare(
-          'SELECT raw_key FROM ingest_log WHERE mailbox = ? AND raw_key IS NOT NULL AND raw_key != ?'
-        ).bind(mailbox, '').all<{ raw_key: string }>()
-        for (const row of rawKeys.results ?? []) {
-          try { await env.ATTACHMENTS.delete(row.raw_key); r2Deleted++ } catch { /* best-effort */ }
-        }
-        // Delete attachment blobs
-        const attKeys = await env.DB.prepare(
-          "SELECT storage_key FROM attachments WHERE email_id IN (SELECT id FROM emails WHERE mailbox = ?) AND storage_key IS NOT NULL"
-        ).bind(mailbox).all<{ storage_key: string }>()
-        for (const row of attKeys.results ?? []) {
-          try { await env.ATTACHMENTS.delete(row.storage_key); r2Deleted++ } catch { /* best-effort */ }
-        }
-      } catch (err) {
-        console.warn('R2 cleanup during mailbox delete had errors (continuing with D1 delete):', err)
-      }
-    }
-
     try {
-      await env.DB.batch([
-        env.DB.prepare('DELETE FROM email_labels WHERE email_id IN (SELECT id FROM emails WHERE mailbox = ?)').bind(mailbox),
-        env.DB.prepare('DELETE FROM attachments WHERE email_id IN (SELECT id FROM emails WHERE mailbox = ?)').bind(mailbox),
-        env.DB.prepare('DELETE FROM emails WHERE mailbox = ?').bind(mailbox),
-        env.DB.prepare('DELETE FROM ingest_log WHERE mailbox = ?').bind(mailbox),
-        env.DB.prepare('DELETE FROM daily_send_counts WHERE mailbox = ?').bind(mailbox),
-        env.DB.prepare('DELETE FROM webhook_routes WHERE mailbox = ?').bind(mailbox),
-        env.DB.prepare('DELETE FROM domains WHERE mailbox = ?').bind(mailbox),
-        env.DB.prepare('DELETE FROM auth_tokens WHERE mailbox = ?').bind(mailbox),
-      ])
+      const r2Deleted = await deleteMailboxData(env, mailbox)
+      return Response.json({ ok: true, deleted: mailbox, r2_blobs_deleted: r2Deleted })
     } catch (err) {
       console.error('Failed to delete mailbox:', err)
       return Response.json({ error: 'Failed to delete mailbox' }, { status: 500 })
     }
-    return Response.json({ ok: true, deleted: mailbox, r2_blobs_deleted: r2Deleted })
   }
 
   if (request.method === 'GET') {
@@ -167,6 +135,41 @@ export async function handleMailbox(
   }
 
   return Response.json({ error: 'Method not allowed' }, { status: 405 })
+}
+
+export async function deleteMailboxData(env: Env, mailbox: string): Promise<number> {
+  let r2Deleted = 0
+  if (env.ATTACHMENTS) {
+    try {
+      const rawKeys = await env.DB.prepare(
+        'SELECT raw_key FROM ingest_log WHERE mailbox = ? AND raw_key IS NOT NULL AND raw_key != ?'
+      ).bind(mailbox, '').all<{ raw_key: string }>()
+      for (const row of rawKeys.results ?? []) {
+        try { await env.ATTACHMENTS.delete(row.raw_key); r2Deleted++ } catch { /* best-effort */ }
+      }
+      const attachmentKeys = await env.DB.prepare(
+        "SELECT storage_key FROM attachments WHERE email_id IN (SELECT id FROM emails WHERE mailbox = ?) AND storage_key IS NOT NULL"
+      ).bind(mailbox).all<{ storage_key: string }>()
+      for (const row of attachmentKeys.results ?? []) {
+        try { await env.ATTACHMENTS.delete(row.storage_key); r2Deleted++ } catch { /* best-effort */ }
+      }
+    } catch (error) {
+      console.warn('R2 cleanup during mailbox delete had errors (continuing with D1 delete):', error)
+    }
+  }
+
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM email_labels WHERE email_id IN (SELECT id FROM emails WHERE mailbox = ?)').bind(mailbox),
+    env.DB.prepare('DELETE FROM attachments WHERE email_id IN (SELECT id FROM emails WHERE mailbox = ?)').bind(mailbox),
+    env.DB.prepare('DELETE FROM emails WHERE mailbox = ?').bind(mailbox),
+    env.DB.prepare('DELETE FROM ingest_log WHERE mailbox = ?').bind(mailbox),
+    env.DB.prepare('DELETE FROM daily_send_counts WHERE mailbox = ?').bind(mailbox),
+    env.DB.prepare('DELETE FROM webhook_routes WHERE mailbox = ?').bind(mailbox),
+    env.DB.prepare('DELETE FROM domains WHERE mailbox = ?').bind(mailbox),
+    env.DB.prepare("UPDATE bootstrap_grants SET token = '' WHERE mailbox = ?").bind(mailbox),
+    env.DB.prepare('DELETE FROM auth_tokens WHERE mailbox = ?').bind(mailbox),
+  ])
+  return r2Deleted
 }
 
 /**

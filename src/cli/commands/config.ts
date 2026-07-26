@@ -1,5 +1,11 @@
 import { loadConfig, getConfigValue, setConfigValue, resolveApiKey, CONFIG_FILE } from '../../core/config.js'
 
+const SENSITIVE_KEYS = new Set([
+  'api_key',
+  'worker_token',
+  'bootstrap_idempotency_key',
+])
+
 export async function configCommand(args: string[]) {
   const subcommand = args[0]
 
@@ -12,7 +18,7 @@ export async function configCommand(args: string[]) {
         process.exit(1)
       }
       setConfigValue(key, value)
-      console.log(`Set ${key} = ${value}`)
+      console.log(SENSITIVE_KEYS.has(key) ? `Set ${key} = [redacted]` : `Set ${key} = ${value}`)
 
       // When api_key is set, auto-resolve mailbox from /v1/me
       if (key === 'api_key' && value.startsWith('mk_')) {
@@ -48,7 +54,13 @@ export async function configCommand(args: string[]) {
 
     default: {
       const config = loadConfig()
-      console.log(JSON.stringify(config, null, 2))
+      const display = Object.fromEntries(
+        Object.entries(config).map(([key, value]) => [
+          key,
+          SENSITIVE_KEYS.has(key) && value ? '[configured]' : value,
+        ]),
+      )
+      console.log(JSON.stringify(display, null, 2))
       break
     }
   }

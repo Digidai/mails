@@ -1,4 +1,5 @@
 import type { Email, EmailThread, EmailQueryOptions, EmailSearchOptions, ThreadQueryOptions, StorageProvider } from '../../core/types.js'
+import { clientHeaders } from '../../core/client.js'
 
 interface RemoteProviderOptions {
   /** Worker API base URL */
@@ -22,7 +23,7 @@ export function createRemoteProvider(options: RemoteProviderOptions): StoragePro
         if (v !== undefined && v !== null) endpoint.searchParams.set(k, String(v))
       }
     }
-    const headers: Record<string, string> = {}
+    const headers: Record<string, string> = clientHeaders('mailbox-api')
     if (token) {
       headers['Authorization'] = `Bearer ${token}`
     }
@@ -100,7 +101,7 @@ export function createRemoteProvider(options: RemoteProviderOptions): StoragePro
     async deleteEmail(id) {
       const endpoint = new URL(emailPath(), url)
       endpoint.searchParams.set('id', id)
-      const headers: Record<string, string> = {}
+      const headers: Record<string, string> = clientHeaders('mailbox-api')
       if (token) {
         headers['Authorization'] = `Bearer ${token}`
       }

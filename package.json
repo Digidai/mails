@@ -1,6 +1,6 @@
 {
   "name": "mails-agent",
-  "version": "1.9.1",
+  "version": "1.10.0",
   "description": "Email infrastructure for AI agents. Send, receive, search, and extract verification codes.",
   "type": "module",
   "main": "dist/index.js",
@@ -12,10 +12,14 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./sqlite": {
+      "import": "./dist/sqlite.js",
+      "types": "./dist/providers/storage/sqlite.d.ts"
     }
   },
   "scripts": {
-    "build": "bun build src/cli/index.ts --outfile dist/cli.js --target bun && bun build src/index.ts --outfile dist/index.js --target bun",
+    "build": "bun build src/cli/index.ts --outfile dist/cli.js --target node --external bun:sqlite && bun build src/index.ts --outfile dist/index.js --target node --external bun:sqlite && bun build src/providers/storage/sqlite.ts --outfile dist/sqlite.js --target bun && tsc --emitDeclarationOnly",
     "build:compile": "bun build src/cli/index.ts --compile --outfile mails",
     "dev": "bun run src/cli/index.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p worker/tsconfig.json",
@@ -46,6 +50,13 @@
     "cloudflare-workers",
     "cli",
     "verification-code",
+    "otp",
+    "email-api",
+    "email-mcp",
+    "mcp",
+    "claude-code",
+    "cursor",
+    "playwright",
     "webhook",
     "sdk"
   ],
@@ -53,7 +64,7 @@
     "type": "git",
     "url": "git+https://github.com/Digidai/mails.git"
   },
-  "homepage": "https://github.com/Digidai/mails",
+  "homepage": "https://mails0.com",
   "bugs": {
     "url": "https://github.com/Digidai/mails/issues"
   },
@@ -62,6 +73,9 @@
     "turing <o.u.turing@gmail.com> (original mails project)"
   ],
   "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {},
   "devDependencies": {
     "@types/bun": "^1.3.13",

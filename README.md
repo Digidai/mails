@@ -43,10 +43,12 @@ Unlike raw email APIs that only send, mails gives your agent a complete email id
 - **One-click deploy** — `mails deploy` automates the entire self-hosting setup (D1, secrets, Worker) via wrangler
 - **Delete API** — remove processed emails with cascade cleanup (attachments + R2)
 - **Storage providers** — local SQLite (dev) or remote Worker API (production)
-- **Zero runtime dependencies** — all providers use raw `fetch()`
+- **Small runtime surface** — hosted flows use Node's native `fetch()`; local SQLite mode uses Bun
 - **Self-hosted** — deploy your own Worker on Cloudflare (free tier), full control over your data
 
 ## Install
+
+Hosted CLI requires Node.js 20+. Local SQLite mode requires Bun.
 
 ```bash
 npm install -g mails-agent
@@ -59,21 +61,19 @@ npx mails-agent
 ## Quick Start
 
 ```bash
-# 1. Deploy your Worker (see Self-Hosted Deployment guide below)
-cd worker && wrangler deploy
+# Automatic agent-safe start: no browser and no API key printed
+mails bootstrap
+mails inbox
+mails code --timeout 60
 
-# 2. Configure the CLI
-mails config set worker_url https://your-worker.example.com
-mails config set worker_token YOUR_TOKEN
-mails config set mailbox agent@yourdomain.com
-mails config set default_from agent@yourdomain.com
-
-# 3. Use it
-mails send --to user@example.com --subject "Hello" --body "World"
-mails inbox                          # List received emails
-mails inbox --query "password"       # Search emails
-mails code --to agent@yourdomain.com # Wait for verification code
+# Upgrade to a permanent named mailbox with human approval
+mails claim myagent
 ```
+
+`mails bootstrap` creates a random, receive-only mailbox for 72 hours. It can
+read/search email and extract verification codes, but cannot send, manage
+domains/webhooks, download attachments, or create more mailboxes. For production
+control and outbound email, use the self-hosting guide below.
 
 ## How it works
 

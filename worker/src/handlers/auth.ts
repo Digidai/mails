@@ -1,5 +1,6 @@
 import type { AuthContext, Env } from '../types'
 import { timingSafeEqual } from './resend-sig'
+import { tokenSubjectId } from './privacy'
 
 /**
  * Resolve auth context from request.
@@ -19,19 +20,33 @@ export async function resolveAuth(request: Request, env: Env, requireTokenTable 
   if (hasAuthTokensTable) {
     if (!token) return null
     try {
-      // Try with scope column (present after migration 0002 is applied)
+      // Prefer the current least-privilege schema, including token expiry.
       const row = await env.DB.prepare(
-        'SELECT mailbox, scope FROM auth_tokens WHERE token = ?'
-      ).bind(token).first<{ mailbox: string; scope?: string }>()
+        'SELECT mailbox, scope, expires_at FROM auth_tokens WHERE token = ?'
+      ).bind(token).first<{ mailbox: string; scope?: string; expires_at?: string | null }>()
       if (!row) return null
-      return { mailbox: row.mailbox, scope: (row.scope === 'mailbox' ? 'mailbox' : 'full') }
+      if (row.expires_at) {
+        const expiresAt = Date.parse(row.expires_at)
+        if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return null
+      }
+      return {
+        mailbox: row.mailbox,
+        scope: normalizeStoredScope(row.scope),
+        expiresAt: row.expires_at ?? null,
+        subjectId: await tokenSubjectId(token, env),
+      }
     } catch {
-      // scope column doesn't exist yet — fallback to mailbox-only query
+      // Older D1 schemas are treated as mailbox-scoped, never as operators.
       const row = await env.DB.prepare(
         'SELECT mailbox FROM auth_tokens WHERE token = ?'
       ).bind(token).first<{ mailbox: string }>()
       if (!row) return null
-      return { mailbox: row.mailbox, scope: 'full' }
+      return {
+        mailbox: row.mailbox,
+        scope: 'mailbox',
+        expiresAt: null,
+        subjectId: await tokenSubjectId(token, env),
+      }
     }
   }
 
@@ -43,16 +58,33 @@ export async function resolveAuth(request: Request, env: Env, requireTokenTable 
   // Legacy single AUTH_TOKEN mode (no mailbox isolation)
   if (env.AUTH_TOKEN) {
     if (!token || !timingSafeEqual(token, env.AUTH_TOKEN)) return null
-    return { mailbox: null, scope: 'full' }
+    return {
+      mailbox: null,
+      scope: 'operator',
+      expiresAt: null,
+      subjectId: await tokenSubjectId(token, env),
+    }
   }
 
   // No auth configured — fail closed by default. Public API mode is an
   // explicit local/dev escape hatch to avoid accidentally exposing a Worker.
   if (env.ALLOW_PUBLIC_API === 'true') {
-    return { mailbox: null, scope: 'full' }
+    return {
+      mailbox: null,
+      scope: 'operator',
+      expiresAt: null,
+      subjectId: 'local-public-api',
+    }
   }
 
   return null
+}
+
+function normalizeStoredScope(scope: string | undefined): AuthContext['scope'] {
+  if (scope === 'operator' || scope === 'provisional') return scope
+  // Legacy "full", NULL, and unknown values are all mailbox-scoped. Operator
+  // rights must be granted explicitly; they are never inferred from defaults.
+  return 'mailbox'
 }
 
 function extractBearerToken(request: Request): string | null {

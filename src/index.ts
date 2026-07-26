@@ -5,7 +5,6 @@ export { loadConfig, saveConfig, getConfigValue, setConfigValue } from './core/c
 export { createResendProvider } from './providers/send/resend.js'
 export { createHostedSendProvider } from './providers/send/hosted.js'
 export { createWorkerSendProvider } from './providers/send/worker.js'
-export { createSqliteProvider } from './providers/storage/sqlite.js'
 export { createRemoteProvider } from './providers/storage/remote.js'
 
 export type {
