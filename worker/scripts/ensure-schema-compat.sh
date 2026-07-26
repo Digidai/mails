@@ -2,16 +2,17 @@
 set -euo pipefail
 
 DB_NAME="${1:-mails}"
+CONFIG_FILE="${2:-wrangler.toml}"
 
 table_exists() {
   local table="$1"
-  npx wrangler d1 execute "$DB_NAME" --remote --command "SELECT 1 FROM \"$table\" LIMIT 0" >/tmp/d1-table-check.log 2>&1
+  npx wrangler d1 execute "$DB_NAME" --remote --config "$CONFIG_FILE" --command "SELECT 1 FROM \"$table\" LIMIT 0" >/tmp/d1-table-check.log 2>&1
 }
 
 column_exists() {
   local table="$1"
   local column_expr="$2"
-  npx wrangler d1 execute "$DB_NAME" --remote --command "SELECT $column_expr FROM \"$table\" LIMIT 0" >/tmp/d1-column-check.log 2>&1
+  npx wrangler d1 execute "$DB_NAME" --remote --config "$CONFIG_FILE" --command "SELECT $column_expr FROM \"$table\" LIMIT 0" >/tmp/d1-column-check.log 2>&1
 }
 
 ensure_column() {
@@ -30,7 +31,7 @@ ensure_column() {
   fi
 
   echo "Adding missing column $table.$column_expr..."
-  npx wrangler d1 execute "$DB_NAME" --remote --command "ALTER TABLE \"$table\" ADD COLUMN $add_column_sql"
+  npx wrangler d1 execute "$DB_NAME" --remote --config "$CONFIG_FILE" --command "ALTER TABLE \"$table\" ADD COLUMN $add_column_sql"
 }
 
 # Older hosted D1 databases may have tables created before mailbox-scoped auth,
@@ -44,6 +45,8 @@ ensure_column "auth_tokens" "scope" "scope TEXT DEFAULT 'full'"
 ensure_column "auth_tokens" "status" "status TEXT DEFAULT 'active'"
 ensure_column "auth_tokens" "webhook_failures" "webhook_failures INTEGER DEFAULT 0"
 ensure_column "auth_tokens" "webhook_status" "webhook_status TEXT DEFAULT 'active'"
+ensure_column "auth_tokens" "send_unlocks_at" "send_unlocks_at TEXT"
+ensure_column "auth_tokens" "expires_at" "expires_at TEXT"
 
 ensure_column "emails" "message_id" "message_id TEXT"
 ensure_column "emails" "thread_id" "thread_id TEXT"

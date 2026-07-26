@@ -20,12 +20,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
 
       - name: Install dependencies
-        run: cd worker && bun install
-
-      - name: Inject D1 database ID
-        env:
-          D1_ID: ${{ secrets.D1_DATABASE_ID }}
-        run: sed -i "s/YOUR_D1_DATABASE_ID/${D1_ID}/" worker/wrangler.toml
+        run: bun install --frozen-lockfile
+        working-directory: worker
 
       - name: Ensure Vectorize index exists
         env:
@@ -33,7 +29,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           cd worker
-          npx wrangler vectorize create mails-embeddings --dimensions 768 --metric cosine 2>&1 || echo "Vectorize index already exists or creation skipped"
+          npx wrangler vectorize create mails-embeddings --dimensions 768 --metric cosine --config wrangler.mails0.toml 2>&1 || echo "Vectorize index already exists or creation skipped"
 
       - name: Apply D1 schema migrations
         env:
@@ -45,25 +41,11 @@ jobs:
           # Normalize legacy hosted DBs first. CREATE TABLE IF NOT EXISTS does
           # not add columns to existing tables, so old auth_tokens/domains/emails
           # tables must be brought up to shape before schema indexes are applied.
-          bash scripts/ensure-schema-compat.sh mails
-          # Run base schema (CREATE TABLE IF NOT EXISTS is idempotent)
-          npx wrangler d1 execute mails --file=schema.sql --remote
-          # Run each migration with error tolerance (ALTER TABLE is not idempotent
-          # in D1, so "duplicate column" errors are expected on existing DBs)
-          for migration in migrations/*.sql; do
-            if [ -f "$migration" ]; then
-              echo "Applying $migration..."
-              npx wrangler d1 execute mails --file="$migration" --remote 2>&1 | tee /tmp/migration.log || {
-                if grep -q "duplicate column name" /tmp/migration.log; then
-                  echo "  Column already exists — skipping (expected for existing DB)"
-                else
-                  echo "  Migration failed with unexpected error"
-                  cat /tmp/migration.log
-                  exit 1
-                fi
-              }
-            fi
-          done
+          bash scripts/ensure-schema-compat.sh mails wrangler.mails0.toml
+          # The canonical schema uses IF NOT EXISTS and is safe to reapply after
+          # legacy columns have been normalized. Historical ALTER migrations are
+          # intentionally not replayed against production without a migration ledger.
+          npx wrangler d1 execute mails --file=schema.sql --remote --config wrangler.mails0.toml
 
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
@@ -71,6 +53,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: worker
+          command: deploy --config wrangler.mails0.toml
 
       - name: Post-deploy smoke test
         # Wait briefly for the new Worker version to propagate, then run the
