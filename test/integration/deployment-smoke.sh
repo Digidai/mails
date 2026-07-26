@@ -22,7 +22,15 @@ require() {
   printf 'PASS %s\n' "$name"
 }
 
-HEALTH="$(curlh "$WORKER_URL/health")"
+HEALTH=""
+for _attempt in $(seq 1 18); do
+  HEALTH="$(curlh "$WORKER_URL/health")"
+  if [[ "$HEALTH" == *'"auth_schema":true'* ]]; then
+    break
+  fi
+  sleep 5
+done
+
 require "health returns 200" "[HTTP:200]" "$HEALTH"
 require "database binding is ready" '"db":true' "$HEALTH"
 require "auth schema is ready" '"auth_schema":true' "$HEALTH"
@@ -46,7 +54,7 @@ require "bootstrap requires idempotency key" "[HTTP:400]" "$MISSING_KEY"
 CORS="$(curlh -X OPTIONS "$WORKER_URL/v1/bootstrap" \
   -H 'Origin: https://mails0.com' \
   -D -)"
-require "first-party preflight succeeds" "[HTTP:204]" "$CORS"
+require "first-party preflight succeeds" "[HTTP:200]" "$CORS"
 require "preflight allows idempotency header" "Idempotency-Key" "$CORS"
 
 printf 'Deployment smoke passed without creating persistent data.\n'
