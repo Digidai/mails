@@ -529,9 +529,14 @@ export default {
   },
 } satisfies ExportedHandler<Env>
 
-async function handleHealth(env: Env): Promise<Response> {
+export async function handleHealth(env: Env): Promise<Response> {
   const checks: Record<string, boolean> = {
     db: false,
+    auth_schema: false,
+    bootstrap_schema: false,
+    funnel_schema: false,
+    growth_schema: false,
+    bootstrap_config: env.BOOTSTRAP_ENABLED === 'true' && Boolean(env.ABUSE_HASH_SECRET),
     attachments: Boolean(env.ATTACHMENTS),
     ai: Boolean(env.AI),
     vectorize: Boolean(env.VECTORIZE),
@@ -544,7 +549,39 @@ async function handleHealth(env: Env): Promise<Response> {
     console.error('Health check failed:', err)
   }
 
+  const schemaChecks = [
+    [
+      'auth_schema',
+      'SELECT scope, status, send_unlocks_at, expires_at FROM auth_tokens LIMIT 0',
+    ],
+    [
+      'bootstrap_schema',
+      'SELECT idempotency_hash, principal_hash, expires_at FROM bootstrap_grants LIMIT 0',
+    ],
+    [
+      'funnel_schema',
+      'SELECT event_name, anonymous_id, source FROM funnel_events LIMIT 0',
+    ],
+    [
+      'growth_schema',
+      'SELECT event_name, anonymous_id, source FROM growth_events LIMIT 0',
+    ],
+  ] as const
+  for (const [check, query] of schemaChecks) {
+    try {
+      await env.DB.prepare(query).first()
+      checks[check] = true
+    } catch (err) {
+      console.error(`Health schema check failed (${check}):`, err)
+    }
+  }
+
   const healthy = checks.db
+    && checks.auth_schema
+    && checks.bootstrap_schema
+    && checks.funnel_schema
+    && checks.growth_schema
+    && checks.bootstrap_config
   return Response.json(
     {
       ok: healthy,

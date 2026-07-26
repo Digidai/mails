@@ -56,13 +56,11 @@ jobs:
           command: deploy --config wrangler.mails0.toml
 
       - name: Post-deploy smoke test
-        # Wait briefly for the new Worker version to propagate, then run the
-        # integration smoke test. This catches deploy-breaking config issues
-        # that unit tests can't (e.g. missing secrets, schema drift, routing bugs).
-        # If this fails, the whole deploy is marked failed so you notice.
+        # This probe is read-only: it verifies production bindings, schema,
+        # bootstrap configuration, and origin guards without creating mailboxes
+        # or bypassing the human claim flow.
         run: |
           sleep 10
-          chmod +x test/integration/api-smoke.sh
+          chmod +x test/integration/deployment-smoke.sh
           WORKER_URL=https://api.mails0.com \
-          CLAIM_URL=https://mails0.com \
-          ./test/integration/api-smoke.sh
+          ./test/integration/deployment-smoke.sh
